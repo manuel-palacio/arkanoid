@@ -14,9 +14,11 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "howler": "^2.2.4",
     "phaser": "^3.80.1"
   },
   "devDependencies": {
+    "@types/howler": "^2.2.12",
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",
     "eslint": "^8.57.0",
