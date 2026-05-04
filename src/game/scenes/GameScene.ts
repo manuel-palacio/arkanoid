@@ -33,6 +33,7 @@ import { ScoreSystem } from '../systems/ScoreSystem';
 import { getAudio } from '../audio/AudioManager';
 import { haptic } from '../utils/haptics';
 import { acquireWakeLock, releaseWakeLock } from '../utils/wakeLock';
+import { TouchControls } from '../ui/TouchControls';
 import type { ActivePowerUp, PowerUpKind } from '../types';
 import { POWERUPS } from '../data/powerUps';
 import { clearSavedRun, saveRun } from '../data/savedRun';
@@ -75,6 +76,7 @@ export class GameScene extends Phaser.Scene {
   private nearMissResetAt = 0;
   private aimGfx?: Phaser.GameObjects.Graphics;
   private servePulseTween?: Phaser.Tweens.Tween;
+  private touchUi?: TouchControls;
 
   private celebrateNearMiss(x: number): void {
     if (this.time.now > this.nearMissResetAt) {
@@ -141,6 +143,29 @@ export class GameScene extends Phaser.Scene {
       void acquireWakeLock();
     });
 
+    // Capture the paddle's current X whenever the player puts a finger
+    // down — relative-drag mode uses that as the anchor and applies the
+    // finger delta on top of it. Without this hook the very first
+    // touchmove would teleport the paddle because the input system
+    // wouldn't know where it was supposed to start from.
+    this.input.on('pointerdown', () => {
+      this.input$?.beginDrag(this.paddle.x);
+    });
+
+    // DOM-based touch overlay (launch hint pill, mute, pause).
+    this.touchUi = new TouchControls({
+      onLaunch: () => this.tryLaunch(),
+      onPause: () => this.tryPause(),
+      onMute: () => {
+        const m = !this.registry.get(RegistryKeys.Muted);
+        this.registry.set(RegistryKeys.Muted, m);
+        getAudio().setMuted(m);
+        this.touchUi?.setMuted(m);
+      },
+    });
+    this.touchUi.mount();
+    this.touchUi.setMuted(!!this.registry.get(RegistryKeys.Muted));
+
     // UI scene + initial events.
     if (!this.scene.isActive(SceneKeys.UI)) {
       this.scene.launch(SceneKeys.UI);
@@ -199,6 +224,8 @@ export class GameScene extends Phaser.Scene {
       this.projectiles.forEach((p) => p.destroy());
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('blur', onBlur);
+      this.touchUi?.unmount();
+      this.touchUi = undefined;
       void releaseWakeLock();
     });
   }
@@ -356,14 +383,16 @@ export class GameScene extends Phaser.Scene {
   private handlePaddleInput(deltaMs: number): void {
     if (!this.input$) return;
     const axis = this.input$.axisX();
-    const ptr = this.input$.pointerInfo();
     if (axis !== 0) {
       this.paddle.moveBy(axis * Tuning.paddle.speed * (deltaMs / 1000), FIELD_LEFT, FIELD_RIGHT);
-    } else if (ptr.active) {
-      // Direct mapping — paddle's x snaps to finger/cursor x. Anywhere on
-      // the canvas works, not just the lower band, so finger placement
-      // higher up on a phone screen still controls the paddle.
-      this.paddle.setX(ptr.x, FIELD_LEFT, FIELD_RIGHT);
+    } else {
+      const target = this.input$.paddleTargetX();
+      if (target != null) {
+        // Relative drag (touch default): target = paddleX_at_drag_start
+        // + (current finger x - drag origin x). Absolute (mouse): target
+        // = pointer x. Paddle.setX clamps to field bounds.
+        this.paddle.setX(target, FIELD_LEFT, FIELD_RIGHT);
+      }
     }
 
     // Carry attached balls with paddle.
@@ -1106,6 +1135,7 @@ export class GameScene extends Phaser.Scene {
 
   private showServeHint(): void {
     this.serveHint?.destroy();
+    this.touchUi?.showLaunchButton(true);
     this.serveHint = this.add
       .text(GAME_WIDTH / 2, this.paddle.y - 80, 'DRAG TO MOVE  ·  TAP TO SERVE', {
         fontFamily: 'Inter, system-ui, sans-serif',
@@ -1127,6 +1157,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private hideServeHint(): void {
+    this.touchUi?.showLaunchButton(false);
     if (!this.serveHint) return;
     this.tweens.killTweensOf(this.serveHint);
     this.serveHint.destroy();
