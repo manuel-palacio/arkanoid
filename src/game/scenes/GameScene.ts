@@ -182,11 +182,11 @@ export class GameScene extends Phaser.Scene {
     const audio = getAudio();
     this.input.once('pointerdown', () => {
       audio.unlock();
-      audio.playMusic('game');
+      audio.fadeInMusic('game', 800);
     });
     // Also try immediately in case the gesture already happened.
     audio.unlock();
-    audio.playMusic('game');
+    audio.fadeInMusic('game', 800);
 
     // Debug overlay.
     this.debug = !!this.registry.get(RegistryKeys.Debug);
@@ -286,6 +286,8 @@ export class GameScene extends Phaser.Scene {
     const built = buildLevel(this, def);
     this.bricks = built.bricks;
     this.bricksRemaining = built.breakableCount;
+    // Reset music to baseline tempo for the new field.
+    getAudio().setMusicIntensity('normal');
 
     this.events.emit(Events.LevelChanged, def);
     this.showLevelIntro(def.name, def.id);
@@ -655,7 +657,20 @@ export class GameScene extends Phaser.Scene {
     if (brick.isBreakable()) {
       this.bricksRemaining = Math.max(0, this.bricksRemaining - 1);
       this.updateTensionMode();
+      this.updateMusicIntensity();
       if (this.bricksRemaining === 0) this.completeLevel();
+    }
+  }
+
+  /** Pick a music intensity level from current game state. */
+  private updateMusicIntensity(): void {
+    const audio = getAudio();
+    if (this.bricksRemaining <= 2 || this.score.livesLeft === 1) {
+      audio.setMusicIntensity('final');
+    } else if (this.bricksRemaining <= 5) {
+      audio.setMusicIntensity('tense');
+    } else {
+      audio.setMusicIntensity('normal');
     }
   }
 
@@ -714,6 +729,7 @@ export class GameScene extends Phaser.Scene {
     getAudio().playSfx('lifeLost');
     haptic.thump();
     shake(this, Tuning.effects.shakeLifeDurationMs, Tuning.effects.shakeLifeIntensity);
+    this.updateMusicIntensity();
     if (r.livesLeft <= 0) {
       this.triggerGameOver();
       return;

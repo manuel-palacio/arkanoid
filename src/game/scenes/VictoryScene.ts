@@ -15,6 +15,8 @@ export class VictoryScene extends Phaser.Scene {
   }
 
   create(data: VictoryData): void {
+    // Game music tails out as the celebration takes over.
+    getAudio().fadeOutMusic(400);
     this.starfield = drawStarfield(this, { density: 1.6 });
     const cx = GAME_WIDTH / 2;
     const cy = GAME_HEIGHT / 2;

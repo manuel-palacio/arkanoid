@@ -75,10 +75,12 @@ const MUSIC_CONFIG: Record<MusicKey, { src: string }> = {
 
 const MUSIC_BASE_VOLUME = 0.4;
 
+type MusicIntensity = 'normal' | 'tense' | 'final';
+
 export class AudioManager {
   private sfxHowls = new Map<SfxKey, Howl>();
   private musicHowls = new Map<MusicKey, Howl>();
-  private currentMusic: { key: MusicKey; id: number } | null = null;
+  private currentMusic: { key: MusicKey; id: number; intensity: MusicIntensity } | null = null;
   private muted = false;
   private musicVol = 0.5;
   private sfxVol = 0.85;
@@ -138,8 +140,17 @@ export class AudioManager {
     this.musicVol = Math.max(0, Math.min(1, v));
     if (this.currentMusic) {
       const howl = this.musicHowls.get(this.currentMusic.key);
+      const intensityMul =
+        this.currentMusic.intensity === 'final'
+          ? 1.25
+          : this.currentMusic.intensity === 'tense'
+            ? 1.15
+            : 1;
       try {
-        howl?.volume(MUSIC_BASE_VOLUME * this.musicVol, this.currentMusic.id);
+        howl?.volume(
+          Math.min(1, MUSIC_BASE_VOLUME * this.musicVol * intensityMul),
+          this.currentMusic.id,
+        );
       } catch {
         /* ignore */
       }
@@ -197,7 +208,8 @@ export class AudioManager {
     try {
       const id = howl.play();
       howl.volume(MUSIC_BASE_VOLUME * this.musicVol, id);
-      this.currentMusic = { key, id };
+      howl.rate(1, id);
+      this.currentMusic = { key, id, intensity: 'normal' };
     } catch {
       /* ignore */
     }
@@ -212,6 +224,92 @@ export class AudioManager {
       /* ignore */
     }
     this.currentMusic = null;
+  }
+
+  /**
+   * Smooth fade-out. Doesn't unload anything — just ramps the active music
+   * down to silence and stops it after the fade. Cheaper than a hard
+   * `stopMusic` when transitioning between scenes.
+   */
+  fadeOutMusic(durationMs = 800): void {
+    if (!this.currentMusic) return;
+    const { key, id } = this.currentMusic;
+    const howl = this.musicHowls.get(key);
+    if (!howl) {
+      this.currentMusic = null;
+      return;
+    }
+    try {
+      const startVol = MUSIC_BASE_VOLUME * this.musicVol;
+      howl.fade(startVol, 0, durationMs, id);
+      window.setTimeout(() => {
+        try {
+          howl.stop(id);
+        } catch {
+          /* ignore */
+        }
+      }, durationMs + 50);
+      this.currentMusic = null;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /**
+   * Smooth fade-in. Replaces any currently playing track with a brief
+   * 200ms fade-out before fading the new track in over `durationMs`.
+   * Safe to call repeatedly — same-key calls are no-ops.
+   */
+  fadeInMusic(key: MusicKey, durationMs = 800): void {
+    if (!this.ready) return;
+    if (this.currentMusic?.key === key) return;
+    if (this.currentMusic) this.fadeOutMusic(200);
+    const howl = this.musicHowls.get(key);
+    if (!howl) return;
+    try {
+      const id = howl.play();
+      howl.volume(0, id);
+      howl.rate(1, id);
+      const target = MUSIC_BASE_VOLUME * this.musicVol;
+      howl.fade(0, target, durationMs, id);
+      this.currentMusic = { key, id, intensity: 'normal' };
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /**
+   * Adjust the gameplay music's rate + volume to reflect tension.
+   * Subtle on purpose — Howler's rate change alters pitch too, so we
+   * keep the multipliers small. Use 'normal' on level start, 'tense'
+   * when bricks dwindle, 'final' on the last brick / last life.
+   */
+  setMusicIntensity(level: 'normal' | 'tense' | 'final'): void {
+    if (!this.currentMusic) return;
+    if (this.currentMusic.intensity === level) return;
+    const howl = this.musicHowls.get(this.currentMusic.key);
+    if (!howl) return;
+    const id = this.currentMusic.id;
+    const baseVol = MUSIC_BASE_VOLUME * this.musicVol;
+    try {
+      switch (level) {
+        case 'normal':
+          howl.rate(1.0, id);
+          howl.volume(baseVol, id);
+          break;
+        case 'tense':
+          howl.rate(1.08, id);
+          howl.volume(Math.min(1, baseVol * 1.15), id);
+          break;
+        case 'final':
+          howl.rate(1.18, id);
+          howl.volume(Math.min(1, baseVol * 1.25), id);
+          break;
+      }
+      this.currentMusic.intensity = level;
+    } catch {
+      /* ignore */
+    }
   }
 
   destroy(): void {

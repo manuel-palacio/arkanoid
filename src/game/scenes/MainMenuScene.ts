@@ -113,7 +113,7 @@ export class MainMenuScene extends Phaser.Scene {
       this.registry.set(RegistryKeys.LevelIndex, 0);
       clearSavedRun();
       getAudio().playSfx('uiSelect');
-      getAudio().stopMusic();
+      getAudio().fadeOutMusic(400);
       this.scene.start(SceneKeys.Game);
     };
 
@@ -123,7 +123,7 @@ export class MainMenuScene extends Phaser.Scene {
       this.registry.set(RegistryKeys.Lives, saved.lives);
       this.registry.set(RegistryKeys.LevelIndex, saved.levelIndex);
       getAudio().playSfx('uiSelect');
-      getAudio().stopMusic();
+      getAudio().fadeOutMusic(400);
       this.scene.start(SceneKeys.Game);
     };
 
@@ -213,11 +213,11 @@ export class MainMenuScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    // Audio gate: unlock + play menu music after the very first user input.
+    // Audio gate: unlock + fade in menu music after the very first user input.
     const tryStartMusic = () => {
       const audio = getAudio();
       audio.unlock();
-      audio.playMusic('menu');
+      audio.fadeInMusic('menu', 600);
     };
     this.input.once('pointerdown', tryStartMusic);
     this.input.keyboard?.once('keydown', tryStartMusic);

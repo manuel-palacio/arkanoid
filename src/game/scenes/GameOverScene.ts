@@ -22,6 +22,8 @@ export class GameOverScene extends Phaser.Scene {
   }
 
   create(data: GameOverData): void {
+    // Long tail-out so the game-over jingle reads cleanly.
+    getAudio().fadeOutMusic(1200);
     this.starfield = drawStarfield(this);
     const cx = GAME_WIDTH / 2;
     const cy = GAME_HEIGHT / 2;
