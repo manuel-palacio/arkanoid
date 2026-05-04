@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH, RegistryKeys, SceneKeys } from '../config/gameConfig';
 import { getAudio } from '../audio/AudioManager';
 import { loadLeaderboard } from '../data/leaderboard';
+import { clearSavedRun, loadSavedRun } from '../data/savedRun';
 import { consumeBonus, loadStreak, saveStreak } from '../data/streak';
 import { drawStarfield, type Starfield } from '../systems/EffectsSystem';
 
@@ -99,27 +100,45 @@ export class MainMenuScene extends Phaser.Scene {
       });
     }
 
-    // Menu items.
-    const items: Array<{ label: string; onSelect: () => void }> = [
-      {
-        label: 'PLAY',
-        onSelect: () => {
-          // Apply pending streak bonus once.
-          const streak = loadStreak();
-          const startLives = 3 + (streak.bonusPending ? 1 : 0);
-          if (streak.bonusPending) saveStreak(consumeBonus(streak));
-          this.registry.set('streakBonusPending', false);
-          this.registry.set(RegistryKeys.Score, 0);
-          this.registry.set(RegistryKeys.Lives, startLives);
-          this.registry.set(RegistryKeys.LevelIndex, 0);
-          getAudio().playSfx('uiSelect');
-          getAudio().stopMusic();
-          this.scene.start(SceneKeys.Game);
-        },
-      },
-      { label: 'INSTRUCTIONS', onSelect: () => this.showInstructions() },
-      { label: 'SETTINGS', onSelect: () => this.showSettings() },
-    ];
+    // Menu items. CONTINUE only appears when a saved run exists.
+    const saved = loadSavedRun();
+
+    const startNewGame = () => {
+      const streak = loadStreak();
+      const startLives = 3 + (streak.bonusPending ? 1 : 0);
+      if (streak.bonusPending) saveStreak(consumeBonus(streak));
+      this.registry.set('streakBonusPending', false);
+      this.registry.set(RegistryKeys.Score, 0);
+      this.registry.set(RegistryKeys.Lives, startLives);
+      this.registry.set(RegistryKeys.LevelIndex, 0);
+      clearSavedRun();
+      getAudio().playSfx('uiSelect');
+      getAudio().stopMusic();
+      this.scene.start(SceneKeys.Game);
+    };
+
+    const continueRun = () => {
+      if (!saved) return;
+      this.registry.set(RegistryKeys.Score, saved.score);
+      this.registry.set(RegistryKeys.Lives, saved.lives);
+      this.registry.set(RegistryKeys.LevelIndex, saved.levelIndex);
+      getAudio().playSfx('uiSelect');
+      getAudio().stopMusic();
+      this.scene.start(SceneKeys.Game);
+    };
+
+    const items: Array<{ label: string; onSelect: () => void }> = [];
+    if (saved) {
+      items.push({
+        label: `CONTINUE  LV ${saved.levelIndex + 1}`,
+        onSelect: continueRun,
+      });
+      items.push({ label: 'NEW GAME', onSelect: startNewGame });
+    } else {
+      items.push({ label: 'PLAY', onSelect: startNewGame });
+    }
+    items.push({ label: 'INSTRUCTIONS', onSelect: () => this.showInstructions() });
+    items.push({ label: 'SETTINGS', onSelect: () => this.showSettings() });
 
     let selected = 0;
     const labels: Phaser.GameObjects.Text[] = [];

@@ -35,6 +35,7 @@ import { haptic } from '../utils/haptics';
 import { acquireWakeLock, releaseWakeLock } from '../utils/wakeLock';
 import type { ActivePowerUp, PowerUpKind } from '../types';
 import { POWERUPS } from '../data/powerUps';
+import { clearSavedRun, saveRun } from '../data/savedRun';
 
 interface ActiveTimedPU {
   kind: PowerUpKind;
@@ -685,6 +686,13 @@ export class GameScene extends Phaser.Scene {
       this.triggerGameOver();
       return;
     }
+    // Persist the post-life-loss state so a tab close mid-level still
+    // resumes the run with the reduced life count (not full lives).
+    saveRun({
+      levelIndex: this.levelIndex,
+      score: this.score.score,
+      lives: r.livesLeft,
+    });
     // Reset paddle/state.
     this.paddle.resetWidth();
     this.paddle.setMode('normal');
@@ -742,6 +750,13 @@ export class GameScene extends Phaser.Scene {
       this.registry.set(RegistryKeys.LevelIndex, this.levelIndex);
       this.registry.set(RegistryKeys.Score, this.score.score);
       this.registry.set(RegistryKeys.Lives, this.score.livesLeft);
+      // Persist mid-run snapshot — the player can close the tab and
+      // resume from the next level via CONTINUE on the main menu.
+      saveRun({
+        levelIndex: this.levelIndex,
+        score: this.score.score,
+        lives: this.score.livesLeft,
+      });
       if (this.levelIndex >= TOTAL_LEVELS) {
         this.triggerVictory();
       } else {
@@ -755,6 +770,7 @@ export class GameScene extends Phaser.Scene {
 
   private triggerVictory(): void {
     this.persistHighScore();
+    clearSavedRun();
     this.events.emit(Events.GameVictory);
     this.scene.launch(SceneKeys.Victory, { score: this.score.score });
     this.scene.pause();
@@ -763,6 +779,7 @@ export class GameScene extends Phaser.Scene {
   private triggerGameOver(): void {
     this.gameOver = true;
     this.persistHighScore();
+    clearSavedRun();
     getAudio().playSfx('gameOver');
     this.events.emit(Events.GameOver);
     this.time.delayedCall(900, () => {
