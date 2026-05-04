@@ -30,6 +30,8 @@ import { buildLevel } from '../systems/LevelSystem';
 import { createPowerUpSelector, type PowerUpSelector } from '../systems/PowerUpSystem';
 import { ScoreSystem } from '../systems/ScoreSystem';
 import { getAudio } from '../audio/AudioManager';
+import { haptic } from '../utils/haptics';
+import { acquireWakeLock, releaseWakeLock } from '../utils/wakeLock';
 import type { ActivePowerUp, PowerUpKind } from '../types';
 import { POWERUPS } from '../data/powerUps';
 
@@ -108,6 +110,9 @@ export class GameScene extends Phaser.Scene {
       getAudio().setMuted(m);
     });
     this.events.on('ui-pause-request', () => this.tryPause());
+    this.events.on(Events.GameResumed, () => {
+      void acquireWakeLock();
+    });
 
     // UI scene + initial events.
     if (!this.scene.isActive(SceneKeys.UI)) {
@@ -130,12 +135,37 @@ export class GameScene extends Phaser.Scene {
       this.debugGfx = this.add.graphics({ x: 0, y: 0 }).setDepth(1000);
     }
 
+    // Keep the screen awake while the player is in a run. Released on
+    // scene shutdown / pause.
+    void acquireWakeLock();
+
+    // Auto-pause when the tab is hidden / app backgrounded. Mobile users
+    // expect the game to wait for them rather than keep the ball alive
+    // and lose lives while they answered a notification.
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden' && !this.gameOver && !this.scene.isPaused()) {
+        this.tryPause();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    // Also pause on pageshow restore + window blur (covers iOS PWA quirks
+    // where visibilitychange fires inconsistently when switching apps).
+    const onBlur = () => {
+      if (!this.gameOver && !this.scene.isPaused()) {
+        this.tryPause();
+      }
+    };
+    window.addEventListener('blur', onBlur);
+
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.starfield?.destroy();
       this.balls.forEach((b) => b.destroy());
       this.bricks.forEach((b) => b.destroy());
       this.powerups.forEach((p) => p.destroy());
       this.projectiles.forEach((p) => p.destroy());
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('blur', onBlur);
+      void releaseWakeLock();
     });
   }
 
@@ -341,9 +371,11 @@ export class GameScene extends Phaser.Scene {
 
   private tryPause(): void {
     if (this.gameOver) return;
+    if (this.scene.isPaused()) return;
     this.scene.launch(SceneKeys.Pause);
     this.scene.pause();
     this.events.emit(Events.GamePaused);
+    void releaseWakeLock();
   }
 
   // ---------- Per-frame ticks ----------
@@ -445,6 +477,7 @@ export class GameScene extends Phaser.Scene {
         ball.setPosition(ball.x, this.paddle.top - ball.radius - 0.5);
         paddleFlare(this, ball.x, this.paddle.top, ball.tint);
         getAudio().playSfx('paddle');
+        haptic.tick();
         return true;
       }
     }
@@ -501,6 +534,7 @@ export class GameScene extends Phaser.Scene {
 
   private handleBrickDestroyed(brick: Brick, _ball: Ball): void {
     getAudio().playSfx('brickBreak');
+    haptic.bump();
     spark(this, brick.x, brick.y, brick.color, 18);
     shockwave(this, brick.x, brick.y, brick.color);
     shake(this, Tuning.effects.shakeBrickDurationMs, Tuning.effects.shakeBrickIntensity);
@@ -603,6 +637,7 @@ export class GameScene extends Phaser.Scene {
     const r = this.score.loseLife();
     this.events.emit(Events.LivesChanged, r.livesLeft);
     getAudio().playSfx('lifeLost');
+    haptic.thump();
     shake(this, Tuning.effects.shakeLifeDurationMs, Tuning.effects.shakeLifeIntensity);
     if (r.livesLeft <= 0) {
       this.triggerGameOver();
@@ -739,6 +774,7 @@ export class GameScene extends Phaser.Scene {
 
   private applyPowerUp(kind: PowerUpKind): void {
     getAudio().playSfx('powerupGet');
+    haptic.tick();
     this.paddle.pulse();
     const def = POWERUPS[kind];
 
