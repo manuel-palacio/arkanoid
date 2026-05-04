@@ -30,6 +30,11 @@ export class PowerUp {
 
   destroy(): void {
     this.alive = false;
+    // Stop the looping wobble tween before the sprite goes away. Phaser's
+    // tween manager keeps the target reference and would keep firing
+    // onUpdate against a destroyed sprite, producing warnings on busy
+    // levels that drop many capsules.
+    this.sprite.scene?.tweens.killTweensOf(this.sprite);
     this.sprite.destroy();
   }
 }
