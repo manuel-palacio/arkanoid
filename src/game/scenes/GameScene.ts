@@ -744,10 +744,18 @@ export class GameScene extends Phaser.Scene {
 
     switch (kind) {
       case 'expand':
+        if (this.active.find((a) => a.kind === 'shrink')) {
+          this.resolveSizeConflict('expand');
+          break;
+        }
         this.paddle.resize(+40);
         this.startTimed(kind, Tuning.powerups.durations.expand);
         break;
       case 'shrink':
+        if (this.active.find((a) => a.kind === 'expand')) {
+          this.resolveSizeConflict('shrink');
+          break;
+        }
         this.paddle.resize(-40);
         this.startTimed(kind, Tuning.powerups.durations.shrink);
         break;
@@ -773,6 +781,35 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.events.emit(Events.PowerUpActivated, { kind, label: def.label, duration: this.activeRemainingFor(kind) });
+  }
+
+  /**
+   * When the player picks up the opposite-sign size power-up while a
+   * size effect is already active, both cancel out with a tug-of-war
+   * paddle animation and a CANCELLED floater. Felt mandatory for
+   * polish — silently swallowing the second pickup is unsatisfying.
+   */
+  private resolveSizeConflict(_picked: 'expand' | 'shrink'): void {
+    // Drop both timers.
+    this.active = this.active.filter((a) => a.kind !== 'expand' && a.kind !== 'shrink');
+    this.events.emit(Events.PowerUpExpired, 'expand');
+    this.events.emit(Events.PowerUpExpired, 'shrink');
+    // Tug-of-war: scaleX yo-yos a few times, then resets to baseline width.
+    const sp = this.paddle.sprite;
+    const orig = sp.scaleX;
+    this.tweens.add({
+      targets: sp,
+      scaleX: orig * 1.18,
+      yoyo: true,
+      duration: 90,
+      repeat: 2,
+      ease: 'sine.inOut',
+      onComplete: () => {
+        this.paddle.resetWidth();
+      },
+    });
+    floatingPoints(this, this.paddle.x, this.paddle.y - 30, 'CANCELLED', '#ff5d6c', 18);
+    getAudio().playSfx('uiSelect', 0.7);
   }
 
   private activeRemainingFor(kind: PowerUpKind): number {
