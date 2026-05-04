@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH, RegistryKeys, SceneKeys } from '../config/gameConfig';
 import { getAudio } from '../audio/AudioManager';
+import { loadLeaderboard } from '../data/leaderboard';
 import { drawStarfield, type Starfield } from '../systems/EffectsSystem';
 
 export class MainMenuScene extends Phaser.Scene {
@@ -35,15 +36,38 @@ export class MainMenuScene extends Phaser.Scene {
       } as Phaser.Types.GameObjects.Text.TextStyle)
       .setOrigin(0.5);
 
-    // High score
-    const hi = this.registry.get(RegistryKeys.HighScore) as number;
+    // High score / leaderboard panel.
+    const board = loadLeaderboard();
+    const topScore = board[0]?.score ?? (this.registry.get(RegistryKeys.HighScore) as number) ?? 0;
     this.add
-      .text(cx, cy - 60, `HIGH SCORE  ${formatScore(hi)}`, {
+      .text(cx, cy - 60, `HIGH SCORE  ${formatScore(topScore)}`, {
         fontFamily: 'Inter, system-ui, sans-serif',
         fontSize: '16px',
         color: '#ffd23a',
       })
       .setOrigin(0.5);
+
+    if (board.length > 0) {
+      const x0 = GAME_WIDTH - 220;
+      const y0 = 110;
+      this.add
+        .text(x0, y0, 'TOP 5', {
+          fontFamily: 'Inter, system-ui, sans-serif',
+          fontSize: '14px',
+          color: '#9bf2ff',
+          fontStyle: '700',
+        })
+        .setOrigin(0, 0.5);
+      board.forEach((e, i) => {
+        this.add
+          .text(x0, y0 + 22 + i * 20, `${i + 1}. ${e.initials}   ${formatScore(e.score)}`, {
+            fontFamily: 'monospace',
+            fontSize: '14px',
+            color: i === 0 ? '#ffd23a' : '#ffffff',
+          })
+          .setOrigin(0, 0.5);
+      });
+    }
 
     // Menu items.
     const items: Array<{ label: string; onSelect: () => void }> = [
