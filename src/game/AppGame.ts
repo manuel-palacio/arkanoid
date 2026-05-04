@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { createPhaserConfig, RegistryKeys, SceneKeys } from './config/gameConfig';
 import { Tuning } from './config/tuning';
+import { getAudio } from './audio/AudioManager';
 import { BootScene } from './scenes/BootScene';
 import { PreloadScene } from './scenes/PreloadScene';
 import { MainMenuScene } from './scenes/MainMenuScene';
@@ -37,6 +38,18 @@ export function createGame(opts: AppGameOptions): Phaser.Game {
   game.registry.set(RegistryKeys.Muted, false);
   game.registry.set(RegistryKeys.Debug, !!opts.debug);
   game.registry.set(RegistryKeys.HighScore, loadHighScore());
+
+  // Tear down the AudioManager singleton when the game is destroyed (Vite
+  // HMR or page-unload). Browsers cap concurrent AudioContexts at ~6, so
+  // leaking one per reload silently kills audio after a few HMR cycles.
+  game.events.once(Phaser.Core.Events.DESTROY, () => getAudio().destroy());
+
+  if (import.meta.hot) {
+    import.meta.hot.dispose(() => {
+      getAudio().destroy();
+      game.destroy(true);
+    });
+  }
 
   return game;
 }

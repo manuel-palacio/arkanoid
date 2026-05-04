@@ -84,7 +84,7 @@ export class AudioManager {
   }
 
   playSfx(key: SfxKey, volume = 1): void {
-    if (!this.bus || this.muted) return;
+    if (!this.bus || this.muted || !this.ready) return;
     const buf = this.sfx.get(key);
     if (!buf) return;
     const src = this.bus.ctx.createBufferSource();
@@ -97,7 +97,7 @@ export class AudioManager {
   }
 
   playMusic(key: MusicKey): void {
-    if (!this.bus) return;
+    if (!this.bus || !this.ready) return;
     if (this.currentMusicKey === key && this.currentMusic) return;
     this.stopMusic();
     const buf = this.music.get(key);
@@ -109,6 +109,24 @@ export class AudioManager {
     src.start();
     this.currentMusic = { src, startedAt: this.bus.ctx.currentTime };
     this.currentMusicKey = key;
+  }
+
+  /**
+   * Tear down the AudioContext so a new manager (e.g. on Vite HMR) can
+   * claim a fresh one. Browsers cap concurrent contexts at ~6, so leaks
+   * here cause silent audio failure during dev sessions.
+   */
+  destroy(): void {
+    this.stopMusic();
+    if (this.bus) {
+      void this.bus.ctx.close().catch(() => {});
+    }
+    this.bus = null;
+    this.sfx.clear();
+    this.music.clear();
+    this.ready = false;
+    this.readyPromise = null;
+    instance = null;
   }
 
   stopMusic(): void {
