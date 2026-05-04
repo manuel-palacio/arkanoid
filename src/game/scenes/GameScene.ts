@@ -15,6 +15,7 @@ import {
   wallReflect,
 } from '../systems/CollisionSystem';
 import {
+  drawSideGlow,
   drawStarfield,
   fireworks,
   floatingPoints,
@@ -102,8 +103,9 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#05060d');
     this.starfield = drawStarfield(this);
 
-    // World boundaries (visual frame).
+    // World boundaries (visual frame) + side wall glow.
     this.drawFrame();
+    drawSideGlow(this, Tuning.playfield.wallThickness, Tuning.playfield.hudHeight);
 
     // Score / lives state.
     const startLives = (this.registry.get(RegistryKeys.Lives) as number) ?? Tuning.lives.initial;
@@ -639,7 +641,9 @@ export class GameScene extends Phaser.Scene {
         ease: 'sine.inOut',
       });
       this.nextHeartbeatAt = this.time.now;
+      this.starfield?.setSpeedMultiplier(2.4);
     } else if (this.tensionVignette) {
+      this.starfield?.setSpeedMultiplier(1);
       this.tweens.killTweensOf(this.tensionVignette);
       this.tweens.add({
         targets: this.tensionVignette,
