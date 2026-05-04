@@ -11,9 +11,13 @@ export class Ball {
   isAttached = true;
   /** offset from paddle center while attached */
   attachOffset = 0;
-  /** trail render target */
+  /** legacy graphics trail kept as a thin core fade */
   private trail: Phaser.GameObjects.Graphics;
   private trailPoints: Array<{ x: number; y: number; t: number }> = [];
+  /** additive particle trail for the glow */
+  private glowTrail: Phaser.GameObjects.Particles.ParticleEmitter;
+  /** unique tint cycle for distinguishing balls in multi-ball */
+  readonly tint: number;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     const sp = scene.physics.add.image(x, y, 'ball');
@@ -29,11 +33,31 @@ export class Ball {
     (sp.body as Phaser.Physics.Arcade.Body).moves = false;
     this.sprite = sp;
     this.trail = scene.add.graphics({ x: 0, y: 0 }).setDepth(24);
+
+    // A unique tint per ball so multi-ball is readable.
+    const palette = [0x9bf2ff, 0xff5dab, 0xffd23a, 0x4af2a1, 0xb96bff];
+    this.tint = palette[(Ball.spawnCounter++ % palette.length)] ?? 0x9bf2ff;
+
+    this.glowTrail = scene.add
+      .particles(0, 0, 'spark', {
+        follow: sp,
+        frequency: 18,
+        lifespan: 280,
+        speed: 0,
+        scale: { start: 0.9, end: 0 },
+        alpha: { start: 0.55, end: 0 },
+        tint: this.tint,
+        blendMode: Phaser.BlendModes.ADD,
+      })
+      .setDepth(23);
   }
+
+  private static spawnCounter = 0;
 
   destroy(): void {
     this.sprite.destroy();
     this.trail.destroy();
+    this.glowTrail.destroy();
   }
 
   get x(): number {

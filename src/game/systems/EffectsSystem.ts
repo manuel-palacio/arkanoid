@@ -125,6 +125,26 @@ export function shockwave(
   });
 }
 
+/**
+ * Brief horizontal flare on the paddle's top edge at impact x. Reads as
+ * a "kicked" highlight without obscuring the paddle.
+ */
+export function paddleFlare(scene: Phaser.Scene, x: number, y: number, tint = 0xffffff): void {
+  const flare = scene.add
+    .ellipse(x, y, 70, 10, tint, 0.85)
+    .setDepth(22)
+    .setBlendMode(Phaser.BlendModes.ADD);
+  scene.tweens.add({
+    targets: flare,
+    scaleX: 2.2,
+    scaleY: 0.4,
+    alpha: 0,
+    duration: 220,
+    ease: 'Quad.easeOut',
+    onComplete: () => flare.destroy(),
+  });
+}
+
 /** Floating "+points" text that drifts up and fades. */
 export function floatingPoints(
   scene: Phaser.Scene,

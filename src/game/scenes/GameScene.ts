@@ -18,6 +18,7 @@ import {
   drawStarfield,
   floatingPoints,
   hitstop,
+  paddleFlare,
   shake,
   shockwave,
   spark,
@@ -378,6 +379,7 @@ export class GameScene extends Phaser.Scene {
         ({ vx, vy } = ensureMinVertical(vx, vy, speed));
         ball.setVelocity(vx, vy);
         ball.setPosition(ball.x, this.paddle.top - ball.radius - 0.5);
+        paddleFlare(this, ball.x, this.paddle.top, ball.tint);
         getAudio().playSfx('paddle');
         return true;
       }
