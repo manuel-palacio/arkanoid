@@ -3,6 +3,7 @@ import { Events, GAME_WIDTH, RegistryKeys, SceneKeys } from '../config/gameConfi
 import { Tuning } from '../config/tuning';
 import { POWERUPS } from '../data/powerUps';
 import { comboFlash } from '../systems/EffectsSystem';
+import { getAudio } from '../audio/AudioManager';
 import type { ActivePowerUp, LevelDef, PowerUpKind } from '../types';
 
 type TimedKind = keyof typeof Tuning.powerups.durations;
@@ -19,6 +20,7 @@ export class UIScene extends Phaser.Scene {
   private levelText!: Phaser.GameObjects.Text;
   private powerStrip!: Phaser.GameObjects.Container;
   private floatingPoints: Phaser.GameObjects.Text[] = [];
+  private muteIcon!: Phaser.GameObjects.Text;
 
   constructor() {
     super(SceneKeys.UI);
@@ -36,12 +38,26 @@ export class UIScene extends Phaser.Scene {
       .text(GAME_WIDTH / 2, HUD_H / 2, 'HI  0000000', this.style(16, '#ffd23a'))
       .setOrigin(0.5);
     this.levelText = this.add
-      .text(GAME_WIDTH - 20, HUD_H / 2, 'LV 1', this.style(18, '#9bf2ff', '700'))
+      .text(GAME_WIDTH - 130, HUD_H / 2, 'LV 1', this.style(18, '#9bf2ff', '700'))
       .setOrigin(1, 0.5);
     this.livesText = this.add
       .text(GAME_WIDTH / 2 + 200, HUD_H / 2, '♥ ♥ ♥', this.style(20, '#ff5d6c'))
       .setOrigin(0.5);
     this.powerStrip = this.add.container(GAME_WIDTH / 2 - 240, HUD_H / 2);
+
+    // On-screen Pause + Mute buttons. Sized large enough for finger taps;
+    // also work as click targets on desktop.
+    const muteBtn = this.makeIconButton(GAME_WIDTH - 96, HUD_H / 2, '🔊', () => {
+      const m = !this.registry.get(RegistryKeys.Muted);
+      this.registry.set(RegistryKeys.Muted, m);
+      this.muteIcon.setText(m ? '🔇' : '🔊');
+      getAudio().setMuted(m);
+    });
+    this.muteIcon = muteBtn.list[1] as Phaser.GameObjects.Text;
+    this.muteIcon.setText(this.registry.get(RegistryKeys.Muted) ? '🔇' : '🔊');
+    this.makeIconButton(GAME_WIDTH - 56, HUD_H / 2, '⏸', () => {
+      this.scene.get(SceneKeys.Game).events.emit('ui-pause-request');
+    });
 
     const game = this.scene.get(SceneKeys.Game);
     game.events.on(Events.ScoreChanged, this.onScoreChanged, this);
@@ -138,6 +154,39 @@ export class UIScene extends Phaser.Scene {
       color,
       fontStyle: weight,
     };
+  }
+
+  /** Round-rect icon button sized for a fingertip. */
+  private makeIconButton(
+    x: number,
+    y: number,
+    glyph: string,
+    onTap: () => void,
+  ): Phaser.GameObjects.Container {
+    const w = 36;
+    const h = 36;
+    const bg = this.add
+      .rectangle(0, 0, w, h, 0x0e1530, 0.95)
+      .setStrokeStyle(1, 0x9bf2ff, 0.6);
+    const t = this.add
+      .text(0, 0, glyph, {
+        fontFamily: 'system-ui, sans-serif',
+        fontSize: '20px',
+        color: '#ffffff',
+      })
+      .setOrigin(0.5);
+    const c = this.add.container(x, y, [bg, t]).setSize(w, h);
+    c.setInteractive(
+      new Phaser.Geom.Rectangle(-w / 2, -h / 2, w, h),
+      Phaser.Geom.Rectangle.Contains,
+    );
+    c.on('pointerdown', () => {
+      bg.setFillStyle(0x9bf2ff, 0.25);
+      onTap();
+    });
+    c.on('pointerup', () => bg.setFillStyle(0x0e1530, 0.95));
+    c.on('pointerout', () => bg.setFillStyle(0x0e1530, 0.95));
+    return c;
   }
 }
 
