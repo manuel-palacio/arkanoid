@@ -61,6 +61,19 @@ export function createGame(opts: AppGameOptions): Phaser.Game {
     });
   }
 
+  // Mute when the tab/app is backgrounded; resume when foreground. Belt-
+  // and-suspenders: even though GameScene auto-pauses, browsers may
+  // continue to drive audio if the canvas is rendering. Suspending the
+  // AudioContext outright stops every track instantly.
+  document.addEventListener('visibilitychange', () => {
+    const audio = getAudio();
+    if (document.visibilityState === 'hidden') audio.suspend();
+    else audio.resume();
+  });
+  window.addEventListener('blur', () => getAudio().suspend());
+  window.addEventListener('focus', () => getAudio().resume());
+  window.addEventListener('pagehide', () => getAudio().suspend());
+
   return game;
 }
 

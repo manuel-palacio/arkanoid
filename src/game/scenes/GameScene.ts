@@ -69,6 +69,28 @@ export class GameScene extends Phaser.Scene {
   private tensionActive = false;
   private nextHeartbeatAt = 0;
   private tensionVignette?: Phaser.GameObjects.Rectangle;
+  private nearMissCount = 0;
+  private nearMissResetAt = 0;
+
+  private celebrateNearMiss(x: number): void {
+    if (this.time.now > this.nearMissResetAt) {
+      this.nearMissCount = 0;
+    }
+    this.nearMissCount += 1;
+    this.nearMissResetAt = this.time.now + 8000;
+    if (this.nearMissCount >= 3) {
+      // Big celebration — 500 bonus, gold flash, large floater.
+      const { points } = this.score.brickBroken(500, this.time.now);
+      this.events.emit(Events.ScoreChanged, this.score.score, this.score.highScore, points);
+      floatingPoints(this, GAME_WIDTH / 2, GAME_HEIGHT / 2 - 40, 'LEGENDARY SAVE  +500', '#ffd23a', 22);
+      // visual flash already used by combo system
+      this.cameras.main.flash(180, 255, 220, 60);
+      this.nearMissCount = 0;
+    } else {
+      floatingPoints(this, x, this.paddle.top - 14, 'NICE SAVE', '#4af2a1', 14);
+      this.cameras.main.shake(80, 0.004);
+    }
+  }
 
   constructor() {
     super(SceneKeys.Game);
@@ -124,8 +146,15 @@ export class GameScene extends Phaser.Scene {
     // Load level.
     this.loadLevel(this.levelIndex);
 
-    // Music.
+    // Music. iOS Safari requires the AudioContext to be unlocked by a
+    // user gesture in this scene's lifetime — the menu's earlier unlock
+    // doesn't carry over reliably. Defer until the first pointer event.
     const audio = getAudio();
+    this.input.once('pointerdown', () => {
+      audio.unlock();
+      audio.playMusic('game');
+    });
+    // Also try immediately in case the gesture already happened.
     audio.unlock();
     audio.playMusic('game');
 
@@ -349,6 +378,9 @@ export class GameScene extends Phaser.Scene {
       }
     }
     if (launched) {
+      // Belt-and-suspenders audio unlock — the very first serve must
+      // produce sound on iOS even if the earlier unlock didn't take.
+      getAudio().unlock();
       getAudio().playSfx('paddle');
       this.input$?.setBallHeld(false);
       this.hideServeHint();
@@ -478,6 +510,8 @@ export class GameScene extends Phaser.Scene {
         paddleFlare(this, ball.x, this.paddle.top, ball.tint);
         getAudio().playSfx('paddle');
         haptic.tick();
+        // Near-miss detection: hit landed in the outer 18% of the paddle.
+        if (Math.abs(p) > 0.82) this.celebrateNearMiss(ball.x);
         return true;
       }
     }
@@ -977,9 +1011,9 @@ export class GameScene extends Phaser.Scene {
   private showServeHint(): void {
     this.serveHint?.destroy();
     this.serveHint = this.add
-      .text(GAME_WIDTH / 2, this.paddle.y - 60, 'DRAG TO MOVE  ·  TAP TO SERVE', {
+      .text(GAME_WIDTH / 2, this.paddle.y - 80, 'DRAG TO MOVE  ·  TAP TO SERVE', {
         fontFamily: 'Inter, system-ui, sans-serif',
-        fontSize: '16px',
+        fontSize: '14px',
         color: '#9bf2ff',
         fontStyle: '700',
       })

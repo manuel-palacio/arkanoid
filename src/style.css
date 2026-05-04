@@ -54,3 +54,41 @@ canvas {
   -webkit-user-select: none;
   user-select: none;
 }
+
+/* Rotate prompt — shown only when a small device is held in landscape
+ * (the game is portrait-native, see manifest.webmanifest). On desktops
+ * with tall windows we never trigger this. */
+#rotate-prompt {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(5, 6, 13, 0.96);
+  color: var(--fg);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+#rotate-prompt .rotate-icon {
+  font-size: 64px;
+  color: #9bf2ff;
+  margin-bottom: 16px;
+  animation: rotate-anim 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes rotate-anim {
+  0% { transform: rotate(0deg); }
+  50% { transform: rotate(-90deg); }
+  100% { transform: rotate(-90deg); }
+}
+#rotate-prompt .rotate-msg {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  #game { display: none; }
+  #rotate-prompt { display: flex; }
+}

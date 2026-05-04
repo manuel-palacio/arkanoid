@@ -4,18 +4,21 @@ import { Tuning } from '../config/tuning';
 
 export interface Starfield {
   update(deltaMs: number): void;
+  setSpeedMultiplier(m: number): void;
   destroy(): void;
 }
 
 /**
- * Two parallax star layers drawn via Graphics. Cheap and sufficient — no
- * particle emitter overhead. Stars wrap around the bottom.
+ * Three parallax star layers drawn via Graphics — far / mid / near —
+ * each at increasing size, brightness, and speed for a sense of depth.
+ * Stars wrap around the bottom. Cheap (no particle overhead).
  */
 export function drawStarfield(scene: Phaser.Scene, opts?: { density?: number }): Starfield {
   const density = opts?.density ?? 1;
   const layers = [
-    { count: Math.floor(60 * density), speed: 12, color: 0x6688aa, depth: -100 },
-    { count: Math.floor(36 * density), speed: 32, color: 0xbbe0ff, depth: -99 },
+    { count: Math.floor(60 * density), speed: 8, color: 0x3a4a6a, depth: -101, size: 1, alpha: 0.6 },
+    { count: Math.floor(34 * density), speed: 22, color: 0x87a5d0, depth: -100, size: 1.4, alpha: 0.85 },
+    { count: Math.floor(18 * density), speed: 50, color: 0xddeeff, depth: -99, size: 2, alpha: 1 },
   ];
   type Star = { x: number; y: number; sp: number; size: number };
   const layerStars: Star[][] = [];
@@ -28,24 +31,25 @@ export function drawStarfield(scene: Phaser.Scene, opts?: { density?: number }):
         x: Math.random() * GAME_WIDTH,
         y: Math.random() * GAME_HEIGHT,
         sp: l.speed * (0.7 + Math.random() * 0.6),
-        size: 1 + (l.speed > 20 ? Math.random() * 1.2 : 0),
+        size: l.size + (Math.random() - 0.5) * 0.6,
       });
     }
     layerStars.push(stars);
     const g = scene.add.graphics({ x: 0, y: 0 }).setDepth(l.depth);
-    g.fillStyle(l.color, 1);
     layerObjs.push(g);
   }
+
+  let speedMul = 1;
 
   function update(deltaMs: number): void {
     layerObjs.forEach((g, idx) => {
       g.clear();
-      const colorEntry = layers[idx];
-      if (!colorEntry) return;
-      g.fillStyle(colorEntry.color, 1);
+      const conf = layers[idx];
+      if (!conf) return;
+      g.fillStyle(conf.color, conf.alpha);
       const stars = layerStars[idx] ?? [];
       for (const s of stars) {
-        s.y += s.sp * (deltaMs / 1000);
+        s.y += s.sp * speedMul * (deltaMs / 1000);
         if (s.y > GAME_HEIGHT) {
           s.y = 0;
           s.x = Math.random() * GAME_WIDTH;
@@ -59,7 +63,39 @@ export function drawStarfield(scene: Phaser.Scene, opts?: { density?: number }):
     layerObjs.forEach((o) => o.destroy());
   }
 
-  return { update, destroy };
+  function setSpeedMultiplier(m: number): void {
+    speedMul = Math.max(0, m);
+  }
+
+  return { update, destroy, setSpeedMultiplier };
+}
+
+/**
+ * Side wall glow strips — thin neon gradient bars hugging the inside of
+ * the play frame. Adds depth without obscuring gameplay.
+ */
+export function drawSideGlow(scene: Phaser.Scene, wallThickness: number, hudHeight: number): void {
+  const w = 12;
+  const top = wallThickness + hudHeight;
+  const h = GAME_HEIGHT - top - wallThickness;
+  // Left.
+  const left = scene.add.rectangle(wallThickness, top, w, h, 0x4ad6ff).setOrigin(0, 0).setDepth(-80);
+  left.setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.18);
+  // Right.
+  const right = scene.add
+    .rectangle(GAME_WIDTH - wallThickness - w, top, w, h, 0x4ad6ff)
+    .setOrigin(0, 0)
+    .setDepth(-80);
+  right.setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.18);
+  // Subtle pulsing glow.
+  scene.tweens.add({
+    targets: [left, right],
+    alpha: 0.32,
+    duration: 2200,
+    yoyo: true,
+    repeat: -1,
+    ease: 'sine.inOut',
+  });
 }
 
 /** Brief screen shake on the active camera. */

@@ -209,145 +209,221 @@ export class MainMenuScene extends Phaser.Scene {
   }
 
   private showInstructions(): void {
-    showOverlay(this, 'INSTRUCTIONS', [
-      '←  →   move paddle',
-      'A   D   move paddle',
-      'SPACE   launch / fire laser',
-      'P   pause',
-      'M   mute',
-      '',
-      'CATCH falling capsules to power up.',
-      'CLEAR every brick to advance.',
-      'INDESTRUCTIBLE bricks (gray) cannot be broken.',
-    ]);
+    showInstructionsOverlay(this);
   }
 
   private showSettings(): void {
-    const muted = !!this.registry.get(RegistryKeys.Muted);
-    const mvol = Number(this.registry.get(RegistryKeys.MusicVolume));
-    const svol = Number(this.registry.get(RegistryKeys.SfxVolume));
-    showOverlay(this, 'SETTINGS', [
-      `MUSIC  ${vbar(mvol)}`,
-      `SFX    ${vbar(svol)}`,
-      `MUTED  ${muted ? 'YES' : 'NO'}`,
-      '',
-      '[ , ] music down/up',
-      '[ ; / ] sfx down/up',
-      '[ M ] toggle mute',
-    ]).onUpdate(() => {
-      const audio = getAudio();
-      const m = !!this.registry.get(RegistryKeys.Muted);
-      const mv = Number(this.registry.get(RegistryKeys.MusicVolume));
-      const sv = Number(this.registry.get(RegistryKeys.SfxVolume));
-      audio.setMuted(m);
-      audio.setMusicVolume(mv);
-      audio.setSfxVolume(sv);
-    });
+    showSettingsOverlay(this);
   }
 }
 
 // ---- helpers ----
+
+function formatScore(n: number): string {
+  return n.toString().padStart(7, '0');
+}
+
+function clamp01(v: number): number {
+  return Math.max(0, Math.min(1, +v.toFixed(2)));
+}
+
+/**
+ * Touch-first overlay shell. Lays out a panel that fits the portrait
+ * canvas, draws a title, lets the caller render content into a
+ * container, and stamps a CLOSE button at the bottom.
+ */
+function makeOverlay(
+  scene: Phaser.Scene,
+  title: string,
+): { panel: Phaser.GameObjects.Container; close: () => void } {
+  const cx = GAME_WIDTH / 2;
+  const cy = GAME_HEIGHT / 2;
+  const w = GAME_WIDTH - 60;
+  const h = GAME_HEIGHT - 200;
+  const dim = scene.add.rectangle(cx, cy, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.55);
+  const bg = scene.add.rectangle(cx, cy, w, h, 0x0a0a18, 0.96).setStrokeStyle(2, 0x9bf2ff);
+  const tt = scene.add
+    .text(cx, cy - h / 2 + 32, title, {
+      fontFamily: 'Inter, system-ui, sans-serif',
+      fontSize: '24px',
+      color: '#9bf2ff',
+      fontStyle: '700',
+    })
+    .setOrigin(0.5);
+  const panel = scene.add.container(cx, cy);
+
+  const closeBtnY = cy + h / 2 - 36;
+  const closeBg = scene.add
+    .rectangle(cx, closeBtnY, 140, 44, 0x0e1530, 1)
+    .setStrokeStyle(1, 0x9bf2ff);
+  const closeText = scene.add
+    .text(cx, closeBtnY, 'CLOSE  ✕', {
+      fontFamily: 'Inter, system-ui, sans-serif',
+      fontSize: '16px',
+      color: '#9bf2ff',
+      fontStyle: '700',
+    })
+    .setOrigin(0.5);
+  const closer = scene.add.container(cx, closeBtnY).setSize(160, 56);
+  closer.setInteractive(
+    new Phaser.Geom.Rectangle(-80, -28, 160, 56),
+    Phaser.Geom.Rectangle.Contains,
+  );
+
+  const close = () => {
+    [dim, bg, tt, closeBg, closeText, closer, panel].forEach((o) => o.destroy());
+    scene.input.keyboard?.off('keydown-ESC', close);
+    scene.input.keyboard?.off('keydown-ENTER', close);
+    scene.input.keyboard?.off('keydown-SPACE', close);
+  };
+  closer.on('pointerdown', close);
+  scene.input.keyboard?.once('keydown-ESC', close);
+  scene.input.keyboard?.once('keydown-ENTER', close);
+  scene.input.keyboard?.once('keydown-SPACE', close);
+  return { panel, close };
+}
+
+function makeStepperButton(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  label: string,
+  onTap: () => void,
+): Phaser.GameObjects.Container {
+  const w = 44;
+  const h = 36;
+  const bg = scene.add.rectangle(0, 0, w, h, 0x0e1530, 1).setStrokeStyle(1, 0x9bf2ff);
+  const t = scene.add
+    .text(0, 0, label, {
+      fontFamily: 'system-ui, sans-serif',
+      fontSize: '20px',
+      color: '#ffffff',
+      fontStyle: '700',
+    })
+    .setOrigin(0.5);
+  const c = scene.add.container(x, y, [bg, t]).setSize(w, h);
+  c.setInteractive(new Phaser.Geom.Rectangle(-w / 2, -h / 2, w, h), Phaser.Geom.Rectangle.Contains);
+  c.on('pointerdown', () => {
+    bg.setFillStyle(0x9bf2ff, 0.25);
+    onTap();
+  });
+  c.on('pointerup', () => bg.setFillStyle(0x0e1530, 1));
+  c.on('pointerout', () => bg.setFillStyle(0x0e1530, 1));
+  return c;
+}
 
 function vbar(v: number): string {
   const n = Math.max(0, Math.min(10, Math.round(v * 10)));
   return '|' + '█'.repeat(n) + '·'.repeat(10 - n) + '|';
 }
 
-function formatScore(n: number): string {
-  return n.toString().padStart(7, '0');
+function showInstructionsOverlay(scene: Phaser.Scene): void {
+  const { panel } = makeOverlay(scene, 'HOW TO PLAY');
+  const lines = [
+    'DRAG  to move the paddle',
+    'TAP   to launch / fire laser',
+    '⏸  to pause   ·   🔊  to mute',
+    '',
+    'CATCH falling capsules to power up.',
+    'CLEAR every brick to advance.',
+    'GRAY bricks cannot be broken.',
+  ];
+  lines.forEach((line, i) => {
+    panel.add(
+      scene.add
+        .text(0, -120 + i * 28, line, {
+          fontFamily: 'monospace',
+          fontSize: '14px',
+          color: line.startsWith('GRAY') ? '#9bf2ff' : '#ffffff',
+        })
+        .setOrigin(0.5),
+    );
+  });
 }
 
-interface OverlayHandle {
-  onUpdate(fn: () => void): OverlayHandle;
-}
-
-function showOverlay(scene: Phaser.Scene, title: string, lines: string[]): OverlayHandle {
-  const cx = GAME_WIDTH / 2;
-  const cy = GAME_HEIGHT / 2;
-  const w = 560;
-  const h = 60 + lines.length * 28 + 60;
-  const bg = scene.add.rectangle(cx, cy, w, h, 0x0a0a18, 0.95).setStrokeStyle(2, 0x9bf2ff);
-  const tt = scene.add
-    .text(cx, cy - h / 2 + 30, title, {
-      fontFamily: 'Inter, system-ui, sans-serif',
-      fontSize: '28px',
-      color: '#9bf2ff',
-      fontStyle: '700',
-    })
-    .setOrigin(0.5);
-  const lineObjs: Phaser.GameObjects.Text[] = lines.map((line, i) =>
-    scene.add
-      .text(cx, cy - h / 2 + 70 + i * 28, line, {
-        fontFamily: 'monospace',
-        fontSize: '15px',
-        color: '#ffffff',
-      })
-      .setOrigin(0.5),
-  );
-  const closer = scene.add
-    .text(cx, cy + h / 2 - 24, 'PRESS ESC TO CLOSE', {
-      fontFamily: 'Inter, system-ui, sans-serif',
-      fontSize: '12px',
-      color: '#5ea8c5',
-    })
-    .setOrigin(0.5);
-
-  const cleanup = () => {
-    [bg, tt, closer, ...lineObjs].forEach((o) => o.destroy());
-    scene.input.keyboard?.off('keydown-ESC', cleanup);
-    scene.input.keyboard?.off('keydown-ENTER', cleanup);
-    scene.input.keyboard?.off('keydown-SPACE', cleanup);
-    scene.events.off('settings-tick', updateFn);
-  };
-  scene.input.keyboard?.once('keydown-ESC', cleanup);
-  scene.input.keyboard?.once('keydown-ENTER', cleanup);
-  scene.input.keyboard?.once('keydown-SPACE', cleanup);
-  bg.setInteractive().once('pointerdown', cleanup);
-
-  let updateFn: () => void = () => {};
-  scene.events.on('settings-tick', () => updateFn());
-
-  // Settings keys.
+function showSettingsOverlay(scene: Phaser.Scene): void {
   const reg = scene.registry;
-  scene.input.keyboard?.on('keydown-COMMA', () => {
-    reg.set(RegistryKeys.MusicVolume, clamp01(Number(reg.get(RegistryKeys.MusicVolume)) - 0.1));
+  const audio = getAudio();
+  const { panel } = makeOverlay(scene, 'SETTINGS');
+
+  const musicLabel = scene.add
+    .text(-110, -90, 'MUSIC', { fontFamily: 'monospace', fontSize: '14px', color: '#ffffff' })
+    .setOrigin(0, 0.5);
+  const musicBar = scene.add
+    .text(0, -90, vbar(Number(reg.get(RegistryKeys.MusicVolume))), {
+      fontFamily: 'monospace',
+      fontSize: '14px',
+      color: '#9bf2ff',
+    })
+    .setOrigin(0.5);
+
+  const sfxLabel = scene.add
+    .text(-110, -30, 'SFX', { fontFamily: 'monospace', fontSize: '14px', color: '#ffffff' })
+    .setOrigin(0, 0.5);
+  const sfxBar = scene.add
+    .text(0, -30, vbar(Number(reg.get(RegistryKeys.SfxVolume))), {
+      fontFamily: 'monospace',
+      fontSize: '14px',
+      color: '#9bf2ff',
+    })
+    .setOrigin(0.5);
+
+  const muteLabel = scene.add
+    .text(0, 40, '', { fontFamily: 'monospace', fontSize: '14px', color: '#ffffff' })
+    .setOrigin(0.5);
+
+  const refresh = () => {
+    musicBar.setText(vbar(Number(reg.get(RegistryKeys.MusicVolume))));
+    sfxBar.setText(vbar(Number(reg.get(RegistryKeys.SfxVolume))));
+    const m = !!reg.get(RegistryKeys.Muted);
+    muteLabel.setText(m ? '🔇  MUTED' : '🔊  AUDIO ON');
+    audio.setMuted(m);
+    audio.setMusicVolume(Number(reg.get(RegistryKeys.MusicVolume)));
+    audio.setSfxVolume(Number(reg.get(RegistryKeys.SfxVolume)));
+  };
+  refresh();
+
+  const adjustMusic = (d: number) => {
+    reg.set(
+      RegistryKeys.MusicVolume,
+      clamp01(Number(reg.get(RegistryKeys.MusicVolume)) + d),
+    );
     refresh();
-  });
-  scene.input.keyboard?.on('keydown-PERIOD', () => {
-    reg.set(RegistryKeys.MusicVolume, clamp01(Number(reg.get(RegistryKeys.MusicVolume)) + 0.1));
+  };
+  const adjustSfx = (d: number) => {
+    reg.set(RegistryKeys.SfxVolume, clamp01(Number(reg.get(RegistryKeys.SfxVolume)) + d));
     refresh();
-  });
-  scene.input.keyboard?.on('keydown-SEMICOLON', () => {
-    reg.set(RegistryKeys.SfxVolume, clamp01(Number(reg.get(RegistryKeys.SfxVolume)) - 0.1));
-    refresh();
-  });
-  scene.input.keyboard?.on('keydown-FORWARD_SLASH', () => {
-    reg.set(RegistryKeys.SfxVolume, clamp01(Number(reg.get(RegistryKeys.SfxVolume)) + 0.1));
-    refresh();
-  });
-  scene.input.keyboard?.on('keydown-M', () => {
+  };
+
+  const musicMinus = makeStepperButton(scene, -90, -90, '−', () => adjustMusic(-0.1));
+  const musicPlus = makeStepperButton(scene, 90, -90, '+', () => adjustMusic(+0.1));
+  const sfxMinus = makeStepperButton(scene, -90, -30, '−', () => adjustSfx(-0.1));
+  const sfxPlus = makeStepperButton(scene, 90, -30, '+', () => adjustSfx(+0.1));
+
+  // Mute toggle as a tappable pill.
+  const muteToggle = makeStepperButton(scene, 0, 80, 'TOGGLE', () => {
     reg.set(RegistryKeys.Muted, !reg.get(RegistryKeys.Muted));
     refresh();
   });
+  muteToggle.setSize(160, 36);
+  // The visual rect inside is the first child — widen it.
+  const toggleBg = muteToggle.list[0] as Phaser.GameObjects.Rectangle;
+  toggleBg.setSize(160, 36);
+  muteToggle.setInteractive(
+    new Phaser.Geom.Rectangle(-80, -18, 160, 36),
+    Phaser.Geom.Rectangle.Contains,
+  );
 
-  function refresh(): void {
-    const muted = !!reg.get(RegistryKeys.Muted);
-    const mv = Number(reg.get(RegistryKeys.MusicVolume));
-    const sv = Number(reg.get(RegistryKeys.SfxVolume));
-    if (lineObjs[0]) lineObjs[0].setText(`MUSIC  ${vbar(mv)}`);
-    if (lineObjs[1]) lineObjs[1].setText(`SFX    ${vbar(sv)}`);
-    if (lineObjs[2]) lineObjs[2].setText(`MUTED  ${muted ? 'YES' : 'NO'}`);
-    updateFn();
-  }
-
-  return {
-    onUpdate(fn: () => void) {
-      updateFn = fn;
-      return this;
-    },
-  };
-}
-
-function clamp01(v: number): number {
-  return Math.max(0, Math.min(1, +v.toFixed(2)));
+  panel.add([
+    musicLabel,
+    musicBar,
+    sfxLabel,
+    sfxBar,
+    muteLabel,
+    musicMinus,
+    musicPlus,
+    sfxMinus,
+    sfxPlus,
+    muteToggle,
+  ]);
 }

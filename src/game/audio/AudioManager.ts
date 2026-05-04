@@ -69,6 +69,18 @@ export class AudioManager {
     this.applyVolumes();
   }
 
+  /** Suspend the AudioContext so all currently-playing sound stops. */
+  suspend(): void {
+    if (!this.bus) return;
+    if (this.bus.ctx.state === 'running') void this.bus.ctx.suspend().catch(() => {});
+  }
+
+  /** Resume after a previous suspend. */
+  resume(): void {
+    if (!this.bus) return;
+    if (this.bus.ctx.state === 'suspended') void this.bus.ctx.resume().catch(() => {});
+  }
+
   setMuted(m: boolean): void {
     this.muted = m;
     this.applyVolumes();

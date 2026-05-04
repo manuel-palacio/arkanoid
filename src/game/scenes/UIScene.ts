@@ -52,9 +52,10 @@ export class UIScene extends Phaser.Scene {
     // Row 2 — active power-up strip (below stats).
     this.powerStrip = this.add.container(12, row2Y + 4);
 
-    // On-screen Pause + Mute buttons (top-right corner). Sized for finger
-    // taps; also work as click targets on desktop.
-    const muteBtn = this.makeIconButton(GAME_WIDTH - 50, row1Y, '🔊', () => {
+    // On-screen Pause + Mute buttons (top-right corner). Visible bg is
+    // 28x28 but the tappable hit area is 44x44 (Apple/Google touch target
+    // minimum). Positioned so neither overflows past the right edge.
+    const muteBtn = this.makeIconButton(GAME_WIDTH - 56, row1Y, '🔊', () => {
       const m = !this.registry.get(RegistryKeys.Muted);
       this.registry.set(RegistryKeys.Muted, m);
       this.muteIcon.setText(m ? '🔇' : '🔊');
@@ -62,7 +63,7 @@ export class UIScene extends Phaser.Scene {
     });
     this.muteIcon = muteBtn.list[1] as Phaser.GameObjects.Text;
     this.muteIcon.setText(this.registry.get(RegistryKeys.Muted) ? '🔇' : '🔊');
-    this.makeIconButton(GAME_WIDTH - 20, row1Y, '⏸', () => {
+    this.makeIconButton(GAME_WIDTH - 22, row1Y, '⏸', () => {
       this.scene.get(SceneKeys.Game).events.emit('ui-pause-request');
     });
 
@@ -99,7 +100,10 @@ export class UIScene extends Phaser.Scene {
   }
 
   private onLevelChanged(def: LevelDef): void {
-    this.levelText.setText(`LV ${def.id}  ${def.name}`);
+    // Truncate long level names so they don't overflow into the lives /
+    // pause buttons in the cramped portrait HUD.
+    const name = def.name.length > 8 ? def.name.slice(0, 7) + '…' : def.name;
+    this.levelText.setText(`LV ${def.id}  ${name}`);
   }
 
   private onCombo(chain: number): void {
@@ -121,17 +125,20 @@ export class UIScene extends Phaser.Scene {
     const list = Array.isArray(payload) ? payload : [];
     list.forEach((a, i) => {
       const def = POWERUPS[a.kind];
-      const x = i * 64;
-      const bg = this.add.rectangle(x, 0, 60, 18, 0x0e1530, 0.95).setOrigin(0, 0.5).setStrokeStyle(1, def.color);
+      const x = i * 68;
+      const bg = this.add
+        .rectangle(x, 0, 64, 22, 0x0e1530, 0.95)
+        .setOrigin(0, 0.5)
+        .setStrokeStyle(1, def.color);
       const t = this.add
-        .text(x + 6, -2, `${def.label}`, this.style(9, '#ffffff', '700'))
+        .text(x + 6, -3, `${def.label}`, this.style(12, '#ffffff', '700'))
         .setOrigin(0, 0.5);
       const total = TIMED_KINDS.has(a.kind)
         ? Tuning.powerups.durations[a.kind as TimedKind]
         : 0;
       const fill = total > 0 ? Math.max(0, Math.min(1, a.remaining / total)) : 1;
       const bar = this.add
-        .rectangle(x + 4, 6, 52 * fill, 2, def.color, 1)
+        .rectangle(x + 4, 8, 56 * fill, 2.5, def.color, 1)
         .setOrigin(0, 0.5);
       this.powerStrip.add([bg, t, bar]);
     });
@@ -163,17 +170,23 @@ export class UIScene extends Phaser.Scene {
     };
   }
 
-  /** Round-rect icon button sized for a fingertip. */
+  /**
+   * Round-rect icon button sized for a fingertip. The visible chip is
+   * 28x28 but the interactive hit area is 44x44 (Apple/Google touch
+   * target minimum) so users with imprecise taps don't miss.
+   */
   private makeIconButton(
     x: number,
     y: number,
     glyph: string,
     onTap: () => void,
   ): Phaser.GameObjects.Container {
-    const w = 28;
-    const h = 28;
+    const visW = 28;
+    const visH = 28;
+    const hitW = 44;
+    const hitH = 44;
     const bg = this.add
-      .rectangle(0, 0, w, h, 0x0e1530, 0.95)
+      .rectangle(0, 0, visW, visH, 0x0e1530, 0.95)
       .setStrokeStyle(1, 0x9bf2ff, 0.6);
     const t = this.add
       .text(0, 0, glyph, {
@@ -182,9 +195,9 @@ export class UIScene extends Phaser.Scene {
         color: '#ffffff',
       })
       .setOrigin(0.5);
-    const c = this.add.container(x, y, [bg, t]).setSize(w, h);
+    const c = this.add.container(x, y, [bg, t]).setSize(hitW, hitH);
     c.setInteractive(
-      new Phaser.Geom.Rectangle(-w / 2, -h / 2, w, h),
+      new Phaser.Geom.Rectangle(-hitW / 2, -hitH / 2, hitW, hitH),
       Phaser.Geom.Rectangle.Contains,
     );
     c.on('pointerdown', () => {
