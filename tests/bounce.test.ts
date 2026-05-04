@@ -70,21 +70,57 @@ describe('wallReflect', () => {
 });
 
 describe('paddleHit', () => {
-  it('returns null if not crossing top', () => {
-    const r = paddleHit(400, 600, 590, 9, 360, 480, 651);
+  // Paddle covers x=[360,480], y=[651,669] (top, bottom). Ball radius 9.
+  it('returns null when ball is well above paddle', () => {
+    const r = paddleHit(400, 600, 590, 9, 360, 480, 651, 669);
     expect(r).toBeNull();
   });
+
+  it('returns null when ball is below paddle', () => {
+    const r = paddleHit(400, 700, 690, 9, 360, 480, 651, 669);
+    expect(r).toBeNull();
+  });
+
+  it('returns null when ball is moving up (not descending)', () => {
+    const r = paddleHit(400, 651, 660, 9, 360, 480, 651, 669);
+    expect(r).toBeNull();
+  });
+
   it('returns positive offset for right-of-center hit', () => {
-    const r = paddleHit(450, 651, 640, 9, 360, 480, 651);
+    const r = paddleHit(450, 651, 640, 9, 360, 480, 651, 669);
     expect(r).not.toBeNull();
     expect(r!).toBeGreaterThan(0);
     expect(r!).toBeLessThanOrEqual(1);
   });
+
   it('returns negative offset for left-of-center hit', () => {
-    const r = paddleHit(390, 651, 640, 9, 360, 480, 651);
+    const r = paddleHit(390, 651, 640, 9, 360, 480, 651, 669);
     expect(r).not.toBeNull();
     expect(r!).toBeLessThan(0);
     expect(r!).toBeGreaterThanOrEqual(-1);
+  });
+
+  // Regression for issue #1: previously the swept-edge test required
+  // prevY+r < paddleTop, which fails when the ball already overlaps the
+  // paddle at frame start (e.g. after Phaser's auto-physics teleported it).
+  it('catches a ball that starts the frame already inside the paddle', () => {
+    const r = paddleHit(420, 660, 658, 9, 360, 480, 651, 669);
+    expect(r).not.toBeNull();
+  });
+
+  it('catches a fast ball whose center jumps past paddleTop in one frame', () => {
+    const r = paddleHit(420, 668, 600, 9, 360, 480, 651, 669);
+    expect(r).not.toBeNull();
+  });
+
+  it('returns null when ball is to the left of the paddle', () => {
+    const r = paddleHit(300, 655, 640, 9, 360, 480, 651, 669);
+    expect(r).toBeNull();
+  });
+
+  it('returns null when ball is to the right of the paddle', () => {
+    const r = paddleHit(540, 655, 640, 9, 360, 480, 651, 669);
+    expect(r).toBeNull();
   });
 });
 

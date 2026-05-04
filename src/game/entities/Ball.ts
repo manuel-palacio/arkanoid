@@ -22,6 +22,11 @@ export class Ball {
     sp.body.allowGravity = false;
     sp.setCollideWorldBounds(false);
     sp.setDepth(25);
+    // We drive position manually each frame (substep loop in GameScene).
+    // Letting Arcade Physics integrate the body would double the motion
+    // and bypass our collision substep — the ball could teleport past the
+    // paddle in a single frame. See issue #1.
+    (sp.body as Phaser.Physics.Arcade.Body).moves = false;
     this.sprite = sp;
     this.trail = scene.add.graphics({ x: 0, y: 0 }).setDepth(24);
   }

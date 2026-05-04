@@ -89,9 +89,14 @@ export function wallReflect(
 }
 
 /**
- * Returns where the ball hit on the paddle as offset in [-1,1], or null if no
- * hit this frame. Caller is responsible for repositioning the ball above the
- * paddle and applying paddleReflect's vector.
+ * Returns where the ball hit on the paddle as offset in [-1,1], or null if
+ * no hit this frame. Caller is responsible for repositioning the ball above
+ * the paddle and applying paddleReflect's vector.
+ *
+ * Uses an AABB overlap test (ball circle vs. paddle rectangle) gated on the
+ * ball moving downward or staying still. A swept-edge test was previously
+ * used here but failed at high speeds and when the ball started a frame
+ * already overlapping the paddle's top edge — see issue #1.
  */
 export function paddleHit(
   ballX: number,
@@ -101,10 +106,12 @@ export function paddleHit(
   paddleLeft: number,
   paddleRight: number,
   paddleTop: number,
+  paddleBottom: number,
 ): number | null {
-  const reachedTop = ballY + radius >= paddleTop && ballPrevY + radius < paddleTop;
-  if (!reachedTop) return null;
-  if (ballX < paddleLeft || ballX > paddleRight) return null;
+  const overlapsX = ballX + radius > paddleLeft && ballX - radius < paddleRight;
+  const overlapsY = ballY + radius > paddleTop && ballY - radius < paddleBottom;
+  const descending = ballY >= ballPrevY;
+  if (!overlapsX || !overlapsY || !descending) return null;
   const cx = (paddleLeft + paddleRight) / 2;
   const half = (paddleRight - paddleLeft) / 2;
   return clamp((ballX - cx) / half, -1, 1);

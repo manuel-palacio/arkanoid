@@ -267,8 +267,6 @@ export class GameScene extends Phaser.Scene {
         continue;
       }
 
-      ball.rememberPrev();
-
       // Substep movement to mitigate tunneling on small bricks at high speeds.
       const fullDx = ball.vx * dt;
       const fullDy = ball.vy * dt;
@@ -279,15 +277,15 @@ export class GameScene extends Phaser.Scene {
       const sy = fullDy / steps;
 
       for (let s = 0; s < steps; s++) {
+        // Track per-substep prev so swept tests (brickReflect) and the
+        // descent gate in paddleHit work correctly mid-frame.
+        ball.rememberPrev();
         ball.setPosition(ball.x + sx, ball.y + sy);
         if (this.collideAtCurrent(ball)) {
-          // Velocity may have changed — recompute remaining substeps using
-          // the new velocity proportionally.
-          const remaining = steps - s - 1;
-          if (remaining > 0) {
-            const r = remaining / steps;
-            ball.setPosition(ball.x + ball.vx * dt * r, ball.y + ball.vy * dt * r);
-          }
+          // Velocity has been corrected by collideAtCurrent. We deliberately
+          // do NOT advance the ball further this frame — the catch-up motion
+          // could push it past whatever it just bounced off, re-introducing
+          // the tunneling we're trying to prevent (issue #1).
           break;
         }
       }
@@ -338,6 +336,7 @@ export class GameScene extends Phaser.Scene {
         this.paddle.left,
         this.paddle.right,
         this.paddle.top,
+        this.paddle.bottom,
       );
       if (p !== null) {
         if (this.paddle.isSticky()) {
