@@ -15,12 +15,10 @@ export function paddleReflect(hitOffset: number, jitterDeg = 0): { x: number; y:
   const maxA = Tuning.paddle.maxBounceAngle;
   // Steeper near edges, shallow near center.
   let angle = off * maxA + jitterDeg * DEG;
-  // Enforce minimum vertical fraction so we never go horizontal.
-  const minVert = Tuning.paddle.minVerticalFraction;
-  // angle is from straight-up; cos(angle) is the vertical fraction.
-  const minAngleFromVert = Math.acos(1 - minVert); // small
-  void minAngleFromVert;
-  const maxAngleFromVert = Math.acos(minVert); // closer to PI/2
+  // Cap maximum deviation from vertical so we never exit at >max angle.
+  // The minimum (anti-horizontal) bound is enforced post-reflection by
+  // ensureMinVertical, which clamps |vy| to a fraction of the speed.
+  const maxAngleFromVert = Math.acos(Tuning.paddle.minVerticalFraction);
   if (Math.abs(angle) > maxAngleFromVert) angle = Math.sign(angle) * maxAngleFromVert;
   return { x: Math.sin(angle), y: -Math.cos(angle) };
 }
