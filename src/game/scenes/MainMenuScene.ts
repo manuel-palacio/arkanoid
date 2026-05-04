@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH, RegistryKeys, SceneKeys } from '../config/gameConfig';
 import { getAudio } from '../audio/AudioManager';
 import { loadLeaderboard } from '../data/leaderboard';
+import { consumeBonus, loadStreak, saveStreak } from '../data/streak';
 import { drawStarfield, type Starfield } from '../systems/EffectsSystem';
 
 export class MainMenuScene extends Phaser.Scene {
@@ -47,6 +48,41 @@ export class MainMenuScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
+    // Streak badge — top-left.
+    const streakDays = (this.registry.get('streakDays') as number) ?? 0;
+    const bonusPending = !!this.registry.get('streakBonusPending');
+    if (streakDays > 0) {
+      const badge = this.add
+        .rectangle(160, 80, 220, 40, 0x0e1530, 0.95)
+        .setStrokeStyle(1, bonusPending ? 0xffd23a : 0x9bf2ff);
+      const flame = bonusPending ? '🔥' : '·';
+      this.add
+        .text(160, 80, `${flame}  DAY ${streakDays} STREAK`, {
+          fontFamily: 'Inter, system-ui, sans-serif',
+          fontSize: '14px',
+          color: bonusPending ? '#ffd23a' : '#ffffff',
+          fontStyle: '700',
+        })
+        .setOrigin(0.5);
+      if (bonusPending) {
+        this.add
+          .text(160, 108, '+1 LIFE READY', {
+            fontFamily: 'monospace',
+            fontSize: '11px',
+            color: '#ffd23a',
+          })
+          .setOrigin(0.5);
+        this.tweens.add({
+          targets: badge,
+          alpha: { from: 0.85, to: 1 },
+          duration: 700,
+          yoyo: true,
+          repeat: -1,
+          ease: 'sine.inOut',
+        });
+      }
+    }
+
     if (board.length > 0) {
       const x0 = GAME_WIDTH - 220;
       const y0 = 110;
@@ -74,8 +110,13 @@ export class MainMenuScene extends Phaser.Scene {
       {
         label: 'PLAY',
         onSelect: () => {
+          // Apply pending streak bonus once.
+          const streak = loadStreak();
+          const startLives = 3 + (streak.bonusPending ? 1 : 0);
+          if (streak.bonusPending) saveStreak(consumeBonus(streak));
+          this.registry.set('streakBonusPending', false);
           this.registry.set(RegistryKeys.Score, 0);
-          this.registry.set(RegistryKeys.Lives, 3);
+          this.registry.set(RegistryKeys.Lives, startLives);
           this.registry.set(RegistryKeys.LevelIndex, 0);
           getAudio().playSfx('uiSelect');
           getAudio().stopMusic();

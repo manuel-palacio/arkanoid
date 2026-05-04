@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { createPhaserConfig, RegistryKeys, SceneKeys } from './config/gameConfig';
 import { Tuning } from './config/tuning';
 import { getAudio } from './audio/AudioManager';
+import { loadStreak, saveStreak, tickStreak, ymd } from './data/streak';
 import { BootScene } from './scenes/BootScene';
 import { PreloadScene } from './scenes/PreloadScene';
 import { MainMenuScene } from './scenes/MainMenuScene';
@@ -38,6 +39,15 @@ export function createGame(opts: AppGameOptions): Phaser.Game {
   game.registry.set(RegistryKeys.Muted, false);
   game.registry.set(RegistryKeys.Debug, !!opts.debug);
   game.registry.set(RegistryKeys.HighScore, loadHighScore());
+
+  // Daily streak: tick once on boot. If the player returned the next
+  // calendar day, they earn a pending bonus life (consumed when they
+  // press PLAY). The MainMenuScene reads the days count to render a
+  // streak badge.
+  const streakResult = tickStreak(loadStreak(), ymd());
+  saveStreak(streakResult.state);
+  game.registry.set('streakDays', streakResult.state.days);
+  game.registry.set('streakBonusPending', streakResult.state.bonusPending);
 
   // Tear down the AudioManager singleton when the game is destroyed (Vite
   // HMR or page-unload). Browsers cap concurrent AudioContexts at ~6, so
