@@ -52,7 +52,9 @@ export const Tuning = {
     colGap: 4,
     width: 64,
     height: 26,
-    fieldOffsetX: 60, // (960 - 13*64 - 12*4) / 2 ≈ 60
+    // Field width = 13*64 + 12*4 = 880; canvas inside walls = 960 - 2*24 = 912.
+    // Centered offset from canvas edge = WALL + (912 - 880) / 2 = 24 + 16 = 40.
+    fieldOffsetX: 40,
     fieldOffsetY: 100,
     flashMs: 70,
   },
