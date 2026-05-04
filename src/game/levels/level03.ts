@@ -2,18 +2,23 @@ import type { LevelDef } from '../types';
 
 const level03: LevelDef = {
   id: 3,
-  name: 'GATEWAY',
+  name: 'ROCK SHOWER',
+  bg: 0x0a0610,
   ballSpeedMul: 1.1,
-  palette: { standard: 0xff7eb6, tough: 0xffb347, hard: 0xe040fb, special: 0xfff176 },
+  allowedPowerUps: ['expand', 'slow', 'sticky', 'multi', 'life'],
+  palette: {
+    standard: 0xffab40,
+    tough: 0xff6d00,
+    hard: 0xc62828,
+    special: 0xff7043,
+  },
   rows: [
-    'IIIIIIIIIIIII',
-    'I.SSSSSSSSS.I',
-    'I.STTTTTTTS.I',
-    'I.STSSSSSTS.I',
-    'I.STS***STS.I',
-    'I.STSSSSSTS.I',
-    'I.STTTTTTTS.I',
-    'I.SSSSSSSSS.I',
+    'TTSS.SSSSSS..',
+    '.STT.S.S.S..*',
+    '..S.SSTTS.SSI',
+    'TS..S.S.SSS..',
+    '.S.STT..S.*..',
+    'SSSST.S.S.SS*',
   ],
 };
 

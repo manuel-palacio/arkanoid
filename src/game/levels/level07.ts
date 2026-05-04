@@ -2,17 +2,25 @@ import type { LevelDef } from '../types';
 
 const level07: LevelDef = {
   id: 7,
-  name: 'BUNKER',
-  ballSpeedMul: 1.2,
+  name: 'HULL BREACH',
+  bg: 0x080a0f,
+  ballSpeedMul: 1.22,
+  allowedPowerUps: ['expand', 'laser', 'slow', 'life'],
+  palette: {
+    standard: 0x90a4ae,
+    tough: 0x546e7a,
+    hard: 0x37474f,
+    special: 0xb0bec5,
+  },
   rows: [
-    'IIIII...IIIII',
-    'I...I...I...I',
-    'I.H.IHHHI.H.I',
-    'I.H.IHHHI.H.I',
-    'I.T.IT*TI.T.I',
-    'I.S.ISSSI.S.I',
-    'I...I...I...I',
-    'IIIII.*.IIIII',
+    'IIIIIIIIIIIII',
+    'IHHHHHHHHHHHI',
+    'IHSSHHSHHSSHI',
+    'IHSS*HHHH*SSI',
+    'IHHSHHHHHHSHI',
+    'IHHHHHHSHHHHI',
+    'IHHHHHSSSHHHI',
+    'IHHHHHHHHHHHI',
   ],
 };
 

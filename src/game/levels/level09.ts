@@ -2,17 +2,27 @@ import type { LevelDef } from '../types';
 
 const level09: LevelDef = {
   id: 9,
-  name: 'CROSSFIRE',
-  ballSpeedMul: 1.3,
-  allowedPowerUps: ['expand', 'slow', 'multi', 'sticky', 'laser', 'life'],
+  name: 'REACTOR CORE',
+  bg: 0x0f0608,
+  ballSpeedMul: 1.35,
+  allowedPowerUps: ['expand', 'laser', 'slow', 'life', 'sticky'],
+  palette: {
+    standard: 0xff5252,
+    tough: 0xff9100,
+    hard: 0xff1744,
+    special: 0xffffff,
+  },
   rows: [
-    'IHIHIHIHIHIHI',
-    'HTHTHTHTHTHTH',
-    'IHIHI.*.IHIHI',
-    'HTHTHHHHHTHTH',
-    'I.HSSSSSSS.HI',
-    'HHHHHHHHHHHHH',
-    'I.I.I.I.I.I.I',
+    'HHIHHIHHHIHHH',
+    'HHHIHHIHHHHIH',
+    'IHH*IHHIHH*HI',
+    'HHIHIHHHHIHHH',
+    'HIHHHIHHIHHHI',
+    'TSTITSTSTSITS',
+    'STITSTSTSTITS',
+    'TS*STSTITS*ST',
+    'STSITSITSITST',
+    'TSTSTSTSTSTST',
   ],
 };
 

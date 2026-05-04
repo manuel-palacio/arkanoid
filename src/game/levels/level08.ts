@@ -2,18 +2,26 @@ import type { LevelDef } from '../types';
 
 const level08: LevelDef = {
   id: 8,
-  name: 'STARFALL',
-  ballSpeedMul: 1.25,
-  palette: { standard: 0x80deea, tough: 0xff8a65, hard: 0xce93d8, special: 0xfff59d },
+  name: 'ENGINE ROOM',
+  bg: 0x080a08,
+  ballSpeedMul: 1.28,
+  allowedPowerUps: ['expand', 'laser', 'slow', 'life'],
+  palette: {
+    standard: 0xff6f00,
+    tough: 0xbf360c,
+    hard: 0x4caf50,
+    special: 0xffeb3b,
+  },
   rows: [
-    '......H......',
-    '.....HTH.....',
-    '....HTSTH....',
-    '...HTS*STH...',
-    '....HTSTH....',
-    '.....HTH.....',
-    '......H......',
-    'I...I.*.I...I',
+    'HHHHIHHHIHHHH',
+    'HTTHITTTITTHH',
+    'TH*HITHTITH*H',
+    'HTTHITTTITTHH',
+    'HHHHIHHHIHHHH',
+    'TTTTITTTITTT*',
+    'HHTHIHHHIHHHH',
+    'THHHIHHHIHHHT',
+    'TTTTITTTITTTT',
   ],
 };
 
