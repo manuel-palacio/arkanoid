@@ -72,6 +72,8 @@ export class GameScene extends Phaser.Scene {
   private tensionVignette?: Phaser.GameObjects.Rectangle;
   private nearMissCount = 0;
   private nearMissResetAt = 0;
+  private aimGfx?: Phaser.GameObjects.Graphics;
+  private servePulseTween?: Phaser.Tweens.Tween;
 
   private celebrateNearMiss(x: number): void {
     if (this.time.now > this.nearMissResetAt) {
@@ -222,6 +224,7 @@ export class GameScene extends Phaser.Scene {
     this.tickProjectiles(time);
     this.tickActivePowerUps(delta);
     this.tickTension(time);
+    this.drawAimLine();
     if (this.debug) this.drawDebug();
   }
 
@@ -386,6 +389,7 @@ export class GameScene extends Phaser.Scene {
       getAudio().playSfx('paddle');
       this.input$?.setBallHeld(false);
       this.hideServeHint();
+      this.stopServePulse();
     }
   }
 
@@ -1010,6 +1014,77 @@ export class GameScene extends Phaser.Scene {
     this.balls.push(b);
     this.input$?.setBallHeld(true);
     this.showServeHint();
+    this.startServePulse(b);
+  }
+
+  /** Slow breathing scale on the held ball + a dashed aim line that
+   *  tracks paddle position so the player can see where their serve
+   *  will go. */
+  private startServePulse(ball: Ball): void {
+    this.servePulseTween?.stop();
+    ball.sprite.setScale(1);
+    this.servePulseTween = this.tweens.add({
+      targets: ball.sprite,
+      scale: { from: 0.92, to: 1.18 },
+      duration: 620,
+      yoyo: true,
+      repeat: -1,
+      ease: 'sine.inOut',
+    });
+    if (!this.aimGfx) {
+      this.aimGfx = this.add.graphics().setDepth(24);
+    }
+  }
+
+  private stopServePulse(): void {
+    this.servePulseTween?.stop();
+    this.servePulseTween = undefined;
+    this.balls.forEach((b) => b.sprite.setScale(1));
+    this.aimGfx?.clear();
+  }
+
+  /** Per-frame aim line drawn from each attached ball. */
+  private drawAimLine(): void {
+    if (!this.aimGfx) return;
+    this.aimGfx.clear();
+    const held = this.balls.find((b) => b.isAttached);
+    if (!held) return;
+    // Match the paddle-zone reflection model: outgoing angle is
+    // determined by where the ball sits on the paddle.
+    const rel = (held.x - this.paddle.left) / this.paddle.width; // 0..1
+    const offset = Math.max(-1, Math.min(1, (rel - 0.5) * 2));
+    const angle = offset * Tuning.paddle.maxBounceAngle; // 0 = straight up
+    const dx = Math.sin(angle);
+    const dy = -Math.cos(angle);
+    const len = 110;
+    // Dashed line from ball outward.
+    this.aimGfx.lineStyle(2, 0x9bf2ff, 0.55);
+    const dash = 8;
+    const gap = 6;
+    for (let i = 0; i < len; i += dash + gap) {
+      const t0 = i / len;
+      const t1 = Math.min((i + dash) / len, 1);
+      this.aimGfx.lineBetween(
+        held.x + dx * len * t0,
+        held.y + dy * len * t0,
+        held.x + dx * len * t1,
+        held.y + dy * len * t1,
+      );
+    }
+    // Arrowhead.
+    const tipX = held.x + dx * len;
+    const tipY = held.y + dy * len;
+    const perpX = -dy;
+    const perpY = dx;
+    this.aimGfx.fillStyle(0x9bf2ff, 0.7);
+    this.aimGfx.fillTriangle(
+      tipX,
+      tipY,
+      tipX - dx * 10 + perpX * 5,
+      tipY - dy * 10 + perpY * 5,
+      tipX - dx * 10 - perpX * 5,
+      tipY - dy * 10 - perpY * 5,
+    );
   }
 
   private showServeHint(): void {

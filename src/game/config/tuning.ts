@@ -20,7 +20,7 @@ export const Tuning = {
     minWidth: 70,
     maxWidth: 180,
     height: 16,
-    speed: 620, // px/sec keyboard
+    speed: 760, // px/sec keyboard
     color: 0x9bf2ff,
     accentColor: 0xffffff,
     /** maximum outgoing angle from vertical, in radians (75 deg) */
@@ -31,14 +31,16 @@ export const Tuning = {
     bounceJitterDeg: 1.0,
   },
 
-  // Ball
+  // Ball — speeds tuned for the portrait canvas (~840 px of travel from
+  // top wall to paddle). At 720 base the top-to-bottom traversal takes
+  // ~1.2 s, which feels brisk on mobile without being unfair.
   ball: {
     radius: 8,
-    baseSpeed: 360,
-    minSpeed: 280,
-    maxSpeed: 680,
+    baseSpeed: 720,
+    minSpeed: 520,
+    maxSpeed: 1080,
     /** speed gained per brick destroyed, capped at maxSpeed */
-    speedupPerBrick: 1.2,
+    speedupPerBrick: 2.4,
     color: 0xffffff,
     trailColor: 0x9bf2ff,
     /** capped x|y velocity for tunneling guard substep computation */
@@ -75,7 +77,7 @@ export const Tuning = {
 
   // Power-ups
   powerups: {
-    speed: 150,
+    speed: 220,
     width: 38,
     height: 16,
     /** ms duration for timed power-ups */
