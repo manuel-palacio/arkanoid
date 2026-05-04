@@ -16,6 +16,7 @@ import {
 } from '../systems/CollisionSystem';
 import {
   drawStarfield,
+  fireworks,
   floatingPoints,
   hitstop,
   paddleFlare,
@@ -194,33 +195,86 @@ export class GameScene extends Phaser.Scene {
   private showLevelIntro(name: string, id: number): void {
     const cx = GAME_WIDTH / 2;
     const cy = GAME_HEIGHT / 2;
-    const txt1 = this.add
-      .text(cx, cy - 16, `LEVEL ${id}`, {
+
+    // Dim the playfield briefly so the splash reads.
+    const dim = this.add
+      .rectangle(cx, cy, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0)
+      .setDepth(890);
+    this.tweens.add({ targets: dim, fillAlpha: 0.45, duration: 200, yoyo: true, hold: 600 });
+
+    // Number slams in from above, kerns out, then drops to settle.
+    const num = this.add
+      .text(cx, cy - 80, `LEVEL ${id}`, {
         fontFamily: 'Inter, system-ui, sans-serif',
-        fontSize: '36px',
+        fontSize: '64px',
         color: '#9bf2ff',
+        fontStyle: '900',
+      })
+      .setOrigin(0.5)
+      .setDepth(900)
+      .setShadow(0, 0, '#4ad6ff', 22, true, true)
+      .setScale(2.4)
+      .setAlpha(0);
+
+    const sub = this.add
+      .text(cx, cy + 0, name, {
+        fontFamily: 'Inter, system-ui, sans-serif',
+        fontSize: '28px',
+        color: '#ffffff',
         fontStyle: '700',
       })
       .setOrigin(0.5)
-      .setDepth(900);
-    const txt2 = this.add
-      .text(cx, cy + 24, name, {
-        fontFamily: 'Inter, system-ui, sans-serif',
-        fontSize: '20px',
-        color: '#ffffff',
-      })
-      .setOrigin(0.5)
-      .setDepth(900);
+      .setDepth(900)
+      .setAlpha(0);
+
+    // Line accents that slide in from offscreen.
+    const lineL = this.add.rectangle(0, cy + 38, 0, 2, 0x9bf2ff, 1).setOrigin(1, 0.5).setDepth(900);
+    const lineR = this.add.rectangle(GAME_WIDTH, cy + 38, 0, 2, 0x9bf2ff, 1).setOrigin(0, 0.5).setDepth(900);
+
     this.tweens.add({
-      targets: [txt1, txt2],
-      alpha: 0,
-      y: '-=20',
-      delay: 800,
-      duration: 600,
-      onComplete: () => {
-        txt1.destroy();
-        txt2.destroy();
-      },
+      targets: num,
+      scale: 1,
+      alpha: 1,
+      duration: 280,
+      ease: 'Cubic.easeOut',
+    });
+    this.tweens.add({
+      targets: sub,
+      alpha: 1,
+      duration: 280,
+      delay: 180,
+    });
+    this.tweens.add({
+      targets: lineL,
+      width: 240,
+      duration: 380,
+      delay: 120,
+      ease: 'Cubic.easeOut',
+    });
+    this.tweens.add({
+      targets: lineR,
+      width: 240,
+      duration: 380,
+      delay: 120,
+      ease: 'Cubic.easeOut',
+    });
+    getAudio().playSfx('uiSelect', 0.7);
+
+    // Outro: everything slides up + fades.
+    this.time.delayedCall(900, () => {
+      this.tweens.add({
+        targets: [num, sub, lineL, lineR],
+        alpha: 0,
+        y: '-=24',
+        duration: 320,
+        onComplete: () => {
+          num.destroy();
+          sub.destroy();
+          lineL.destroy();
+          lineR.destroy();
+          dim.destroy();
+        },
+      });
     });
   }
 
@@ -520,30 +574,40 @@ export class GameScene extends Phaser.Scene {
     this.events.emit(Events.LevelComplete, this.levelIndex);
     getAudio().playSfx('levelComplete');
 
+    // Fireworks across the upper playfield.
+    fireworks(this, 1400, 10);
+
     // Banner.
     const cx = GAME_WIDTH / 2;
     const cy = GAME_HEIGHT / 2;
     const t1 = this.add
       .text(cx, cy - 20, 'LEVEL CLEAR', {
         fontFamily: 'Inter, system-ui, sans-serif',
-        fontSize: '40px',
+        fontSize: '52px',
         color: '#ffd23a',
+        fontStyle: '900',
+      })
+      .setOrigin(0.5)
+      .setDepth(950)
+      .setShadow(0, 0, '#ffd23a', 22, true, true)
+      .setScale(0.4)
+      .setAlpha(0);
+    const t2 = this.add
+      .text(cx, cy + 32, `+${r.bonus}`, {
+        fontFamily: 'Inter, system-ui, sans-serif',
+        fontSize: '28px',
+        color: '#ffffff',
         fontStyle: '700',
       })
       .setOrigin(0.5)
-      .setDepth(950);
-    const t2 = this.add
-      .text(cx, cy + 24, `+${r.bonus}`, {
-        fontFamily: 'Inter, system-ui, sans-serif',
-        fontSize: '24px',
-        color: '#ffffff',
-      })
-      .setOrigin(0.5)
-      .setDepth(950);
+      .setDepth(950)
+      .setAlpha(0);
+    this.tweens.add({ targets: t1, scale: 1, alpha: 1, duration: 320, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: t2, alpha: 1, duration: 320, delay: 200 });
 
     this.balls.forEach((b) => b.setVelocity(0, 0));
 
-    this.time.delayedCall(1600, () => {
+    this.time.delayedCall(1700, () => {
       t1.destroy();
       t2.destroy();
       this.levelIndex++;

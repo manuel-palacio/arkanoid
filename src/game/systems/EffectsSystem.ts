@@ -125,6 +125,37 @@ export function shockwave(
   });
 }
 
+/**
+ * Fireworks: spawns N bursts of color-mixed sparks at random positions in
+ * the upper playfield, staggered over `durationMs`. Used for level-clear
+ * and game-victory celebration.
+ */
+export function fireworks(scene: Phaser.Scene, durationMs = 1400, bursts = 8): void {
+  const colors = [0x9bf2ff, 0xffd23a, 0xff5dab, 0x4af2a1, 0xb96bff, 0xff9f43];
+  const e = (scene.add
+    .particles(0, 0, 'spark', {
+      speed: { min: 120, max: 380 },
+      angle: { min: 0, max: 360 },
+      lifespan: { min: 600, max: 1100 },
+      scale: { start: 1.1, end: 0 },
+      alpha: { start: 0.95, end: 0 },
+      blendMode: Phaser.BlendModes.ADD,
+      gravityY: 220,
+      emitting: false,
+    })
+    .setDepth(190)) as Phaser.GameObjects.Particles.ParticleEmitter;
+  for (let i = 0; i < bursts; i++) {
+    const t = (i / bursts) * durationMs + Math.random() * 80;
+    const fx = 120 + Math.random() * (GAME_WIDTH - 240);
+    const fy = 100 + Math.random() * (GAME_HEIGHT * 0.45);
+    scene.time.delayedCall(t, () => {
+      e.setParticleTint(colors[Math.floor(Math.random() * colors.length)] ?? 0xffffff);
+      e.explode(28, fx, fy);
+    });
+  }
+  scene.time.delayedCall(durationMs + 1200, () => e.destroy());
+}
+
 /** Full-screen color flash for big-chain celebrations. */
 export function comboFlash(scene: Phaser.Scene, color: number, alpha = 0.4): void {
   const flash = scene.add
