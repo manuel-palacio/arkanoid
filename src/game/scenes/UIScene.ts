@@ -114,9 +114,9 @@ export class UIScene extends Phaser.Scene {
     });
   }
 
-  private spawnFloater(text: string, color: string = '#ffffff'): void {
+  private spawnFloater(text: string, color: string = '#ffffff', size = 14): void {
     const t = this.add
-      .text(this.scoreText.x + 220, HUD_H / 2, text, this.style(14, color, '700'))
+      .text(this.scoreText.x + 220, HUD_H / 2, text, this.style(size, color, '700'))
       .setOrigin(0, 0.5);
     this.floatingPoints.push(t);
     this.tweens.add({
