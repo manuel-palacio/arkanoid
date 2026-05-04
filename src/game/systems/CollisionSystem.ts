@@ -115,14 +115,34 @@ export function paddleHit(
   return clamp((ballX - cx) / half, -1, 1);
 }
 
-/** Anti-stuck nudge: if vertical fraction collapsed, restore minimum. */
+/**
+ * Anti-stuck nudge: enforce both a minimum vertical fraction (so the ball
+ * never crawls horizontally) and a maximum horizontal fraction (so it
+ * never pins to a wall). Re-normalizes to the input speed so polynomial
+ * speedup logic stays unaffected. Safe to call after any reflection.
+ */
 export function ensureMinVertical(vx: number, vy: number, speed: number): { vx: number; vy: number } {
+  if (speed <= 0) return { vx, vy };
   const minV = Tuning.paddle.minVerticalFraction;
+  const maxH = Tuning.paddle.maxHorizontalFraction;
+
+  let newVx = vx;
+  let newVy = vy;
+
+  // Clamp horizontal component first.
+  const maxVx = speed * maxH;
+  if (Math.abs(newVx) > maxVx) newVx = nzSign(newVx) * maxVx;
+
+  // Then ensure minimum vertical magnitude (keeping its sign).
   const minVy = speed * minV;
-  if (Math.abs(vy) >= minVy) return { vx, vy };
-  const newVy = nzSign(vy) * minVy;
-  // Conserve speed — recompute vx to keep magnitude.
-  const remainSq = speed * speed - newVy * newVy;
-  const remain = remainSq > 0 ? Math.sqrt(remainSq) : 0;
-  return { vx: nzSign(vx) * remain, vy: newVy };
+  if (Math.abs(newVy) < minVy) newVy = nzSign(newVy) * minVy;
+
+  // Re-normalize back to the input speed so we don't change ball energy.
+  const mag = Math.hypot(newVx, newVy);
+  if (mag > 0) {
+    const scale = speed / mag;
+    newVx *= scale;
+    newVy *= scale;
+  }
+  return { vx: newVx, vy: newVy };
 }

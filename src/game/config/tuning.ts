@@ -25,8 +25,18 @@ export const Tuning = {
     accentColor: 0xffffff,
     /** maximum outgoing angle from vertical, in radians (75 deg) */
     maxBounceAngle: (75 * Math.PI) / 180,
-    /** minimum vertical component as a fraction of speed to avoid horizontal stalls */
-    minVerticalFraction: 0.18,
+    /**
+     * Minimum vertical component as a fraction of speed. Enforced after
+     * EVERY reflection (paddle, wall, brick) — not just paddle — so
+     * shallow angles can't accumulate from repeated bounces.
+     */
+    minVerticalFraction: 0.25,
+    /**
+     * Maximum horizontal component as a fraction of speed. 0.92 caps
+     * the angle from vertical at ~67° even mid-flight, preventing the
+     * "endless diagonal crawl" near-horizontal stall pattern.
+     */
+    maxHorizontalFraction: 0.92,
     /** ±deg jitter applied on every paddle bounce */
     bounceJitterDeg: 1.0,
   },
@@ -119,6 +129,24 @@ export const Tuning = {
     /** extra life every N points */
     extraEvery: 20000,
     max: 6,
+  },
+
+  // Anti-stall — keeps endgame fields lively when only a few bricks remain.
+  antiStall: {
+    /** below this |vy/speed|, count toward "stuck" */
+    verticalFractionThreshold: 0.3,
+    /** consecutive low-vy frames before nudging (~1.5 s @ 60 fps) */
+    stuckFramesTrigger: 90,
+    /** degrees the velocity rotates toward vertical when nudged */
+    nudgeDeg: 12,
+    /** anti-stuck only engages when alive bricks ≤ this */
+    activateBelowBrickCount: 6,
+    /** ms since last brick break before applying gentle endgame speedup */
+    speedAssistAfterMs: 8000,
+    /** alive bricks ≤ this triggers speed assist (and ≤ 3 also enables nudges) */
+    speedAssistBrickCount: 4,
+    /** px/s nudge added each frame while speed assist is active */
+    speedAssistPerFrame: 2,
   },
 
   // Effects

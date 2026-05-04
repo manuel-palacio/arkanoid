@@ -22,8 +22,29 @@ free-licensed arcade SFX before shipping.
 | `ui-click.ogg` | [Kenney — Interface Sounds](https://kenney.nl/assets/interface-sounds) (`click_001.ogg`) | Kenney (CC0) |
 | `level-complete.ogg` | [Kenney — Music Jingles](https://kenney.nl/assets/music-jingles) (`positive_jingle.ogg`) | Kenney (CC0) |
 | `game-over.ogg` | [Kenney — Music Jingles](https://kenney.nl/assets/music-jingles) (`negative_jingle.ogg`) | Kenney (CC0) |
-| `music-menu.ogg` | [OpenGameArt — Space Ambient Loop](https://opengameart.org/) | (varies — pick CC0 / CC-BY) |
-| `music-game.ogg` | [OpenGameArt — Retro Arcade Loop](https://opengameart.org/) | (varies — pick CC0 / CC-BY) |
+| `music-menu.ogg` | **silent placeholder** (4 s `anullsrc`) — drop in a CC0 candy/arcade loop | TBD |
+| `music-game.ogg` | **silent placeholder** (4 s `anullsrc`) — drop in a CC0 candy/arcade loop | TBD |
+
+### Where to grab real music tracks (CC0)
+
+The fade/crossfade infrastructure is wired up — replace `public/audio/music-menu.ogg`
+and `public/audio/music-game.ogg` with real tracks (filenames must stay the same)
+and the game will pick them up. Recommended sources:
+
+- **OpenGameArt.org** — search [music tagged CC0](https://opengameart.org/art-search?keys=&field_art_type_tid%5B%5D=12&sort_by=count&sort_order=DESC). Pick
+  upbeat major-key loops; 90-110 BPM for menu, 120-140 BPM for gameplay.
+- **Kenney.nl Music Jingles** — https://kenney.nl/assets/music-jingles (CC0, short)
+- **Free Music Archive** — https://freemusicarchive.org/ (filter by CC0 / CC-BY)
+- **Incompetech (Kevin MacLeod)** — https://incompetech.com/music/royalty-free/ (CC-BY,
+  attribution required in this file)
+- **Pixabay** — https://pixabay.com/music/ (free for use, no attribution needed)
+
+Convert to `.ogg` and normalize loudness:
+
+```bash
+ffmpeg -i source.mp3 -af loudnorm=I=-16:TP=-1.5:LRA=11 \
+  -c:a vorbis -strict experimental -q:a 5 public/audio/music-game.ogg
+```
 
 When you swap in a real asset, update the row above with the actual author and
 license. CC-BY tracks must be credited here exactly as the author requests.

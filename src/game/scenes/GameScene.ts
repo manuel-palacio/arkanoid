@@ -30,6 +30,7 @@ import { InputSystem } from '../systems/InputSystem';
 import { buildLevel } from '../systems/LevelSystem';
 import { createPowerUpSelector, type PowerUpSelector } from '../systems/PowerUpSystem';
 import { ScoreSystem } from '../systems/ScoreSystem';
+import { AntiStuckSystem } from '../systems/AntiStuckSystem';
 import { getAudio } from '../audio/AudioManager';
 import { haptic } from '../utils/haptics';
 import { acquireWakeLock, releaseWakeLock } from '../utils/wakeLock';
@@ -77,6 +78,8 @@ export class GameScene extends Phaser.Scene {
   private aimGfx?: Phaser.GameObjects.Graphics;
   private servePulseTween?: Phaser.Tweens.Tween;
   private touchUi?: TouchControls;
+  private antiStuck = new AntiStuckSystem();
+  private timeSinceLastBrickDestroyed = 0;
 
   private celebrateNearMiss(x: number): void {
     if (this.time.now > this.nearMissResetAt) {
@@ -286,6 +289,8 @@ export class GameScene extends Phaser.Scene {
     const built = buildLevel(this, def);
     this.bricks = built.bricks;
     this.bricksRemaining = built.breakableCount;
+    this.antiStuck.reset();
+    this.timeSinceLastBrickDestroyed = 0;
     // Reset music to baseline tempo for the new field.
     getAudio().setMusicIntensity('normal');
 
@@ -422,6 +427,7 @@ export class GameScene extends Phaser.Scene {
       this.input$?.setBallHeld(false);
       this.hideServeHint();
       this.stopServePulse();
+      this.antiStuck.reset();
     }
   }
 
@@ -453,6 +459,7 @@ export class GameScene extends Phaser.Scene {
   private tickBalls(timeMs: number, deltaMs: number): void {
     if (this.balls.length === 0) return;
     const dt = deltaMs / 1000;
+    this.timeSinceLastBrickDestroyed += deltaMs;
 
     for (const ball of this.balls) {
       if (ball.isAttached) {
@@ -496,7 +503,8 @@ export class GameScene extends Phaser.Scene {
       );
       if (wr.hit) {
         ball.setPosition(wr.x, wr.y);
-        ball.setVelocity(wr.vx, wr.vy);
+        const cleaned = ensureMinVertical(wr.vx, wr.vy, ball.speed || Math.hypot(wr.vx, wr.vy));
+        ball.setVelocity(cleaned.vx, cleaned.vy);
         ball.onWallBounce(this);
         getAudio().playSfx('wall', 0.5);
       }
@@ -505,6 +513,15 @@ export class GameScene extends Phaser.Scene {
       if (ball.y - ball.radius > Tuning.playfield.floorY) {
         this.onBallLost(ball);
       }
+
+      // Late-game stall guard. Engages only when few bricks remain and
+      // the ball has settled into a near-horizontal pattern. Nudge feels
+      // intentional — ball flashes white + a soft wall sfx plays.
+      if (this.antiStuck.update(ball, this.bricksRemaining)) {
+        ball.onWallBounce(this);
+        getAudio().playSfx('wall', 0.4);
+      }
+      this.applyEndgameSpeedAssist(ball);
 
       ball.updateTrail(timeMs);
     }
@@ -568,26 +585,34 @@ export class GameScene extends Phaser.Scene {
       ) {
         continue;
       }
-      // Reflect.
+      // Reflect. Capture pre-reflection velocity so we can detect which
+      // axis flipped *after* writing the new velocity to the ball — the
+      // earlier code compared `r.vx !== ball.vx` after setVelocity, which
+      // was always false and silently skipped penetration resolution.
+      const oldVx = ball.vx;
+      const oldVy = ball.vy;
+      const speed = ball.speed;
       const r = brickReflect(
         ball.prevX,
         ball.prevY,
         ball.x,
         ball.y,
-        ball.vx,
-        ball.vy,
+        oldVx,
+        oldVy,
         brick.left,
         brick.top,
         brick.right,
         brick.bottom,
       );
-      ball.setVelocity(r.vx, r.vy);
-      // Resolve penetration.
-      if (r.vx !== ball.vx) {
+      // Post-process to keep the ball off the horizontal-stall trajectory.
+      const cleaned = ensureMinVertical(r.vx, r.vy, speed);
+      ball.setVelocity(cleaned.vx, cleaned.vy);
+      // Resolve penetration along whichever axis actually flipped.
+      if (r.vx !== oldVx) {
         if (r.vx > 0) ball.setPosition(brick.right + ball.radius, ball.y);
         else ball.setPosition(brick.left - ball.radius, ball.y);
       }
-      if (r.vy !== ball.vy) {
+      if (r.vy !== oldVy) {
         if (r.vy > 0) ball.setPosition(ball.x, brick.bottom + ball.radius);
         else ball.setPosition(ball.x, brick.top - ball.radius);
       }
@@ -656,10 +681,25 @@ export class GameScene extends Phaser.Scene {
 
     if (brick.isBreakable()) {
       this.bricksRemaining = Math.max(0, this.bricksRemaining - 1);
+      this.timeSinceLastBrickDestroyed = 0;
       this.updateTensionMode();
       this.updateMusicIntensity();
       if (this.bricksRemaining === 0) this.completeLevel();
     }
+  }
+
+  /**
+   * Late-game speed assist. When only a couple of bricks remain and no
+   * brick has broken for a while, gently bump the ball's speed each
+   * frame toward an alive-bricks-dependent target. bumpSpeed clamps to
+   * Tuning.ball.maxSpeed so this can't compound past the design ceiling.
+   */
+  private applyEndgameSpeedAssist(ball: Ball): void {
+    const cfg = Tuning.antiStall;
+    if (this.bricksRemaining > cfg.speedAssistBrickCount) return;
+    if (this.timeSinceLastBrickDestroyed < cfg.speedAssistAfterMs) return;
+    const target = Tuning.ball.baseSpeed * (1 + (5 - this.bricksRemaining) * 0.08);
+    if (ball.speed < target) ball.bumpSpeed(cfg.speedAssistPerFrame);
   }
 
   /** Pick a music intensity level from current game state. */
