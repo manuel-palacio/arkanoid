@@ -24,6 +24,8 @@ export class InputSystem {
   private pointerActive = false;
   private pointerX = 0;
   private pointerY = 0;
+  private holdingBall = false;
+  private firstTouchAt = 0;
 
   constructor(private scene: Phaser.Scene) {
     const kb = scene.input.keyboard;
@@ -45,6 +47,14 @@ export class InputSystem {
       this.pointerActive = true;
       this.pointerX = p.worldX;
       this.pointerY = p.worldY;
+      // On touch, the very first tap while the ball is held is treated as
+      // "reposition only" — players need a way to drag the paddle into
+      // place without accidentally serving (issue #9). A second tap (or a
+      // click on desktop) launches.
+      if (p.wasTouch && this.holdingBall && this.firstTouchAt === 0) {
+        this.firstTouchAt = scene.time.now;
+        return;
+      }
       this.fire('launch');
       this.fire('fire');
     });
@@ -99,5 +109,11 @@ export class InputSystem {
 
   isFireDown(): boolean {
     return !!this.spaceKey?.isDown || this.scene.input.activePointer.isDown;
+  }
+
+  /** GameScene calls this whenever the serve state changes. */
+  setBallHeld(held: boolean): void {
+    this.holdingBall = held;
+    if (!held) this.firstTouchAt = 0;
   }
 }

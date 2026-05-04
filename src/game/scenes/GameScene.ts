@@ -246,7 +246,10 @@ export class GameScene extends Phaser.Scene {
         launched = true;
       }
     }
-    if (launched) getAudio().playSfx('paddle');
+    if (launched) {
+      getAudio().playSfx('paddle');
+      this.input$?.setBallHeld(false);
+    }
   }
 
   private tryFire(): void {
@@ -756,6 +759,7 @@ export class GameScene extends Phaser.Scene {
     b.attachOffset = 0;
     void speedMul;
     this.balls.push(b);
+    this.input$?.setBallHeld(true);
   }
 
   private drawFrame(): void {
