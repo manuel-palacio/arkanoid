@@ -67,21 +67,40 @@ export function shake(scene: Phaser.Scene, durationMs: number, intensity: number
   scene.cameras.main.shake(durationMs, intensity, false);
 }
 
-/** Quick spark burst at (x, y). */
+/**
+ * Pool of pre-built spark emitters keyed off the scene. We previously
+ * created a fresh `ParticleEmitter` per spark() call, which on a busy
+ * frame (multi-ball + 13 brick row) meant a dozen emitters and as many
+ * delayedCalls. Now we reuse one emitter per scene and re-tint per call.
+ */
+const SCENE_POOL = new WeakMap<Phaser.Scene, Phaser.GameObjects.Particles.ParticleEmitter>();
+
+function getSparkEmitter(scene: Phaser.Scene): Phaser.GameObjects.Particles.ParticleEmitter {
+  let e = SCENE_POOL.get(scene);
+  if (!e) {
+    e = scene.add
+      .particles(0, 0, 'spark', {
+        speed: { min: 80, max: 220 },
+        angle: { min: 0, max: 360 },
+        lifespan: { min: 220, max: 460 },
+        scale: { start: 0.9, end: 0 },
+        blendMode: Phaser.BlendModes.ADD,
+        emitting: false,
+      })
+      .setDepth(50);
+    SCENE_POOL.set(scene, e);
+    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      SCENE_POOL.delete(scene);
+    });
+  }
+  return e;
+}
+
+/** Quick spark burst at (x, y). Pooled — see getSparkEmitter. */
 export function spark(scene: Phaser.Scene, x: number, y: number, color: number, count = 10): void {
-  const emitter = scene.add.particles(x, y, 'spark', {
-    speed: { min: 80, max: 220 },
-    angle: { min: 0, max: 360 },
-    lifespan: { min: 220, max: 460 },
-    scale: { start: 0.9, end: 0 },
-    quantity: count,
-    blendMode: Phaser.BlendModes.ADD,
-    tint: color,
-    emitting: false,
-  });
-  emitter.setDepth(50);
-  emitter.explode(count, x, y);
-  scene.time.delayedCall(700, () => emitter.destroy());
+  const e = getSparkEmitter(scene);
+  e.setParticleTint(color);
+  e.explode(count, x, y);
 }
 
 export interface HitstopHost {
