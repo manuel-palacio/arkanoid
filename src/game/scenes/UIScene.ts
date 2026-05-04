@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { Events, GAME_WIDTH, RegistryKeys, SceneKeys } from '../config/gameConfig';
 import { Tuning } from '../config/tuning';
 import { POWERUPS } from '../data/powerUps';
+import { comboFlash } from '../systems/EffectsSystem';
 import type { ActivePowerUp, LevelDef, PowerUpKind } from '../types';
 
 type TimedKind = keyof typeof Tuning.powerups.durations;
@@ -79,7 +80,16 @@ export class UIScene extends Phaser.Scene {
   }
 
   private onCombo(chain: number): void {
-    this.spawnFloater(`x${chain} CHAIN`, '#ffd23a');
+    const colors = ['#ffd23a', '#ff9f1c', '#ff6b35', '#ff3860', '#e040fb', '#b388ff'];
+    const color = colors[Math.min(Math.max(0, chain - 3), colors.length - 1)] ?? '#ffd23a';
+    const size = 13 + Math.min(chain, 8) * 3;
+    const label =
+      chain >= 6 ? `x${chain} ULTRA COMBO` : chain >= 4 ? `x${chain} GREAT COMBO` : `x${chain} CHAIN`;
+    this.spawnFloater(label, color, size);
+    if (chain >= 6) {
+      const flashColor = parseInt(color.slice(1), 16);
+      comboFlash(this.scene.get(SceneKeys.Game), flashColor, 0.35);
+    }
   }
 
   private onPowerUpsChanged(payload: ActivePowerUp[] | PowerUpKind | null): void {

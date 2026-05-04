@@ -125,6 +125,22 @@ export function shockwave(
   });
 }
 
+/** Full-screen color flash for big-chain celebrations. */
+export function comboFlash(scene: Phaser.Scene, color: number, alpha = 0.4): void {
+  const flash = scene.add
+    .rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, color, 0)
+    .setDepth(180)
+    .setBlendMode(Phaser.BlendModes.ADD);
+  scene.tweens.add({
+    targets: flash,
+    fillAlpha: alpha,
+    duration: 70,
+    yoyo: true,
+    hold: 40,
+    onComplete: () => flash.destroy(),
+  });
+}
+
 /**
  * Brief horizontal flare on the paddle's top edge at impact x. Reads as
  * a "kicked" highlight without obscuring the paddle.
