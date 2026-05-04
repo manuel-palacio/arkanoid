@@ -27,27 +27,34 @@ export class UIScene extends Phaser.Scene {
   }
 
   create(): void {
-    // HUD background.
+    // HUD background covers two rows: top stats row (score/level/lives)
+    // and a thinner row below for active power-ups.
     const bg = this.add.rectangle(0, 0, GAME_WIDTH, HUD_H, 0x070912, 1).setOrigin(0, 0);
     bg.setStrokeStyle(1, 0x9bf2ff, 0.25);
 
+    const row1Y = 18;
+    const row2Y = 44;
+
+    // Row 1 — score / level / lives.
     this.scoreText = this.add
-      .text(20, HUD_H / 2, 'SCORE  0000000', this.style(20, '#ffffff', '700'))
+      .text(12, row1Y, '0000000', this.style(18, '#ffffff', '700'))
       .setOrigin(0, 0.5);
     this.highText = this.add
-      .text(GAME_WIDTH / 2, HUD_H / 2, 'HI  0000000', this.style(16, '#ffd23a'))
-      .setOrigin(0.5);
+      .text(12, row2Y + 4, 'HI 0000000', this.style(11, '#ffd23a'))
+      .setOrigin(0, 0.5);
     this.levelText = this.add
-      .text(GAME_WIDTH - 130, HUD_H / 2, 'LV 1', this.style(18, '#9bf2ff', '700'))
-      .setOrigin(1, 0.5);
-    this.livesText = this.add
-      .text(GAME_WIDTH / 2 + 200, HUD_H / 2, '♥ ♥ ♥', this.style(20, '#ff5d6c'))
+      .text(GAME_WIDTH / 2, row1Y, 'LV 1', this.style(15, '#9bf2ff', '700'))
       .setOrigin(0.5);
-    this.powerStrip = this.add.container(GAME_WIDTH / 2 - 240, HUD_H / 2);
+    this.livesText = this.add
+      .text(GAME_WIDTH - 96, row1Y, '♥ ♥ ♥', this.style(16, '#ff5d6c'))
+      .setOrigin(0.5);
 
-    // On-screen Pause + Mute buttons. Sized large enough for finger taps;
-    // also work as click targets on desktop.
-    const muteBtn = this.makeIconButton(GAME_WIDTH - 96, HUD_H / 2, '🔊', () => {
+    // Row 2 — active power-up strip (below stats).
+    this.powerStrip = this.add.container(12, row2Y + 4);
+
+    // On-screen Pause + Mute buttons (top-right corner). Sized for finger
+    // taps; also work as click targets on desktop.
+    const muteBtn = this.makeIconButton(GAME_WIDTH - 50, row1Y, '🔊', () => {
       const m = !this.registry.get(RegistryKeys.Muted);
       this.registry.set(RegistryKeys.Muted, m);
       this.muteIcon.setText(m ? '🔇' : '🔊');
@@ -55,7 +62,7 @@ export class UIScene extends Phaser.Scene {
     });
     this.muteIcon = muteBtn.list[1] as Phaser.GameObjects.Text;
     this.muteIcon.setText(this.registry.get(RegistryKeys.Muted) ? '🔇' : '🔊');
-    this.makeIconButton(GAME_WIDTH - 56, HUD_H / 2, '⏸', () => {
+    this.makeIconButton(GAME_WIDTH - 20, row1Y, '⏸', () => {
       this.scene.get(SceneKeys.Game).events.emit('ui-pause-request');
     });
 
@@ -114,17 +121,17 @@ export class UIScene extends Phaser.Scene {
     const list = Array.isArray(payload) ? payload : [];
     list.forEach((a, i) => {
       const def = POWERUPS[a.kind];
-      const x = i * 92;
-      const bg = this.add.rectangle(x, 0, 84, 24, 0x0e1530, 0.95).setOrigin(0, 0.5).setStrokeStyle(1, def.color);
+      const x = i * 64;
+      const bg = this.add.rectangle(x, 0, 60, 18, 0x0e1530, 0.95).setOrigin(0, 0.5).setStrokeStyle(1, def.color);
       const t = this.add
-        .text(x + 8, 0, `${def.label}`, this.style(11, '#ffffff', '700'))
+        .text(x + 6, -2, `${def.label}`, this.style(9, '#ffffff', '700'))
         .setOrigin(0, 0.5);
       const total = TIMED_KINDS.has(a.kind)
         ? Tuning.powerups.durations[a.kind as TimedKind]
         : 0;
       const fill = total > 0 ? Math.max(0, Math.min(1, a.remaining / total)) : 1;
       const bar = this.add
-        .rectangle(x + 4, 9, 76 * fill, 3, def.color, 1)
+        .rectangle(x + 4, 6, 52 * fill, 2, def.color, 1)
         .setOrigin(0, 0.5);
       this.powerStrip.add([bg, t, bar]);
     });
@@ -163,15 +170,15 @@ export class UIScene extends Phaser.Scene {
     glyph: string,
     onTap: () => void,
   ): Phaser.GameObjects.Container {
-    const w = 36;
-    const h = 36;
+    const w = 28;
+    const h = 28;
     const bg = this.add
       .rectangle(0, 0, w, h, 0x0e1530, 0.95)
       .setStrokeStyle(1, 0x9bf2ff, 0.6);
     const t = this.add
       .text(0, 0, glyph, {
         fontFamily: 'system-ui, sans-serif',
-        fontSize: '20px',
+        fontSize: '16px',
         color: '#ffffff',
       })
       .setOrigin(0.5);

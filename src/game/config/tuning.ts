@@ -4,23 +4,23 @@
  * in `gameConfig.ts`.
  */
 export const Tuning = {
-  // Playfield
+  // Playfield — portrait 9:16 for mobile-first.
   playfield: {
-    width: 960,
-    height: 720,
-    wallThickness: 24,
-    floorY: 720, // y past which a ball is "lost"
-    hudHeight: 56,
+    width: 540,
+    height: 960,
+    wallThickness: 14,
+    floorY: 960, // y past which a ball is "lost"
+    hudHeight: 64,
   },
 
   // Paddle
   paddle: {
-    y: 660,
-    baseWidth: 128,
-    minWidth: 80,
-    maxWidth: 220,
-    height: 18,
-    speed: 720, // px/sec keyboard
+    y: 880,
+    baseWidth: 110,
+    minWidth: 70,
+    maxWidth: 180,
+    height: 16,
+    speed: 620, // px/sec keyboard
     color: 0x9bf2ff,
     accentColor: 0xffffff,
     /** maximum outgoing angle from vertical, in radians (75 deg) */
@@ -33,29 +33,29 @@ export const Tuning = {
 
   // Ball
   ball: {
-    radius: 9,
-    baseSpeed: 420,
-    minSpeed: 320,
-    maxSpeed: 760,
+    radius: 8,
+    baseSpeed: 360,
+    minSpeed: 280,
+    maxSpeed: 680,
     /** speed gained per brick destroyed, capped at maxSpeed */
-    speedupPerBrick: 1.4,
+    speedupPerBrick: 1.2,
     color: 0xffffff,
     trailColor: 0x9bf2ff,
     /** capped x|y velocity for tunneling guard substep computation */
-    substepMinPixels: 6,
+    substepMinPixels: 5,
   },
 
-  // Bricks
+  // Bricks — 13 cols at 36×18 with a 2px gap fits 540 wide cleanly.
+  // Field width = 13*36 + 12*2 = 468 + 24 = 492; canvas inside walls = 540 - 28 = 512.
+  // Centered offset = WALL + (512 - 492) / 2 = 14 + 10 = 24.
   bricks: {
     cols: 13,
-    rowGap: 4,
-    colGap: 4,
-    width: 64,
-    height: 26,
-    // Field width = 13*64 + 12*4 = 880; canvas inside walls = 960 - 2*24 = 912.
-    // Centered offset from canvas edge = WALL + (912 - 880) / 2 = 24 + 16 = 40.
-    fieldOffsetX: 40,
-    fieldOffsetY: 100,
+    rowGap: 3,
+    colGap: 2,
+    width: 36,
+    height: 18,
+    fieldOffsetX: 24,
+    fieldOffsetY: 90,
     flashMs: 70,
     /**
      * Row-cycled rainbow used for standard ("S") bricks when a level has
@@ -75,9 +75,9 @@ export const Tuning = {
 
   // Power-ups
   powerups: {
-    speed: 180,
-    width: 44,
-    height: 18,
+    speed: 150,
+    width: 38,
+    height: 16,
     /** ms duration for timed power-ups */
     durations: {
       expand: 18000,
@@ -94,9 +94,9 @@ export const Tuning = {
 
   // Laser projectile
   laser: {
-    speed: 800,
+    speed: 700,
     width: 4,
-    height: 14,
+    height: 12,
     cooldownMs: 220,
     color: 0xff5dab,
     damage: 1,

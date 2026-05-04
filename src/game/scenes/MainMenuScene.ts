@@ -16,62 +16,46 @@ export class MainMenuScene extends Phaser.Scene {
     this.starfield = drawStarfield(this);
 
     const cx = GAME_WIDTH / 2;
-    const cy = GAME_HEIGHT / 2;
 
-    // Title.
+    // Title — sized for portrait width.
     this.add
-      .text(cx, cy - 180, 'BRICKSTORM', {
+      .text(cx, 140, 'BRICKSTORM', {
         fontFamily: 'Inter, system-ui, sans-serif',
-        fontSize: '92px',
+        fontSize: '56px',
         color: '#ffffff',
         fontStyle: '900',
       })
       .setOrigin(0.5)
-      .setShadow(0, 0, '#4ad6ff', 32, true, true);
+      .setShadow(0, 0, '#4ad6ff', 24, true, true);
     this.add
-      .text(cx, cy - 110, 'an arcade brick-breaker', {
+      .text(cx, 184, 'an arcade brick-breaker', {
         fontFamily: 'Inter, system-ui, sans-serif',
-        fontSize: '20px',
+        fontSize: '14px',
         color: '#9bf2ff',
-        letterSpacing: 2,
-      } as Phaser.Types.GameObjects.Text.TextStyle)
-      .setOrigin(0.5);
-
-    // High score / leaderboard panel.
-    const board = loadLeaderboard();
-    const topScore = board[0]?.score ?? (this.registry.get(RegistryKeys.HighScore) as number) ?? 0;
-    this.add
-      .text(cx, cy - 60, `HIGH SCORE  ${formatScore(topScore)}`, {
-        fontFamily: 'Inter, system-ui, sans-serif',
-        fontSize: '16px',
-        color: '#ffd23a',
       })
       .setOrigin(0.5);
 
-    // Streak badge — top-left.
+    // Streak badge — top of the screen, full width.
+    const board = loadLeaderboard();
     const streakDays = (this.registry.get('streakDays') as number) ?? 0;
     const bonusPending = !!this.registry.get('streakBonusPending');
     if (streakDays > 0) {
       const badge = this.add
-        .rectangle(160, 80, 220, 40, 0x0e1530, 0.95)
+        .rectangle(cx, 36, 240, 32, 0x0e1530, 0.95)
         .setStrokeStyle(1, bonusPending ? 0xffd23a : 0x9bf2ff);
       const flame = bonusPending ? '🔥' : '·';
+      const txt = bonusPending
+        ? `${flame}  DAY ${streakDays} · +1 LIFE`
+        : `${flame}  DAY ${streakDays} STREAK`;
       this.add
-        .text(160, 80, `${flame}  DAY ${streakDays} STREAK`, {
+        .text(cx, 36, txt, {
           fontFamily: 'Inter, system-ui, sans-serif',
-          fontSize: '14px',
+          fontSize: '13px',
           color: bonusPending ? '#ffd23a' : '#ffffff',
           fontStyle: '700',
         })
         .setOrigin(0.5);
       if (bonusPending) {
-        this.add
-          .text(160, 108, '+1 LIFE READY', {
-            fontFamily: 'monospace',
-            fontSize: '11px',
-            color: '#ffd23a',
-          })
-          .setOrigin(0.5);
         this.tweens.add({
           targets: badge,
           alpha: { from: 0.85, to: 1 },
@@ -83,25 +67,35 @@ export class MainMenuScene extends Phaser.Scene {
       }
     }
 
+    // High score line under the title.
+    const topScore = board[0]?.score ?? (this.registry.get(RegistryKeys.HighScore) as number) ?? 0;
+    this.add
+      .text(cx, 220, `HIGH  ${formatScore(topScore)}`, {
+        fontFamily: 'Inter, system-ui, sans-serif',
+        fontSize: '14px',
+        color: '#ffd23a',
+      })
+      .setOrigin(0.5);
+
+    // Top-5 leaderboard at the bottom of the menu (centered).
     if (board.length > 0) {
-      const x0 = GAME_WIDTH - 220;
-      const y0 = 110;
+      const y0 = GAME_HEIGHT - 170;
       this.add
-        .text(x0, y0, 'TOP 5', {
+        .text(cx, y0, 'TOP 5', {
           fontFamily: 'Inter, system-ui, sans-serif',
-          fontSize: '14px',
+          fontSize: '12px',
           color: '#9bf2ff',
           fontStyle: '700',
         })
-        .setOrigin(0, 0.5);
+        .setOrigin(0.5);
       board.forEach((e, i) => {
         this.add
-          .text(x0, y0 + 22 + i * 20, `${i + 1}. ${e.initials}   ${formatScore(e.score)}`, {
+          .text(cx, y0 + 18 + i * 16, `${i + 1}. ${e.initials}   ${formatScore(e.score)}`, {
             fontFamily: 'monospace',
-            fontSize: '14px',
+            fontSize: '12px',
             color: i === 0 ? '#ffd23a' : '#ffffff',
           })
-          .setOrigin(0, 0.5);
+          .setOrigin(0.5);
       });
     }
 
@@ -129,11 +123,13 @@ export class MainMenuScene extends Phaser.Scene {
 
     let selected = 0;
     const labels: Phaser.GameObjects.Text[] = [];
+    const menuTopY = 290;
+    const itemSpacing = 56;
     items.forEach((item, i) => {
       const t = this.add
-        .text(cx, cy + 0 + i * 56, item.label, {
+        .text(cx, menuTopY + i * itemSpacing, item.label, {
           fontFamily: 'Inter, system-ui, sans-serif',
-          fontSize: '32px',
+          fontSize: '28px',
           color: '#ffffff',
           fontStyle: '700',
         })
@@ -191,9 +187,9 @@ export class MainMenuScene extends Phaser.Scene {
 
     // Footer prompt.
     this.add
-      .text(cx, GAME_HEIGHT - 40, 'CLICK / TAP / PRESS ENTER TO START', {
+      .text(cx, GAME_HEIGHT - 24, 'TAP / ENTER TO START', {
         fontFamily: 'Inter, system-ui, sans-serif',
-        fontSize: '13px',
+        fontSize: '11px',
         color: '#5ea8c5',
       })
       .setOrigin(0.5);

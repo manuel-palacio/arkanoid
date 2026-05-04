@@ -24,8 +24,12 @@ export class InputSystem {
   private pointerActive = false;
   private pointerX = 0;
   private pointerY = 0;
-  private holdingBall = false;
-  private firstTouchAt = 0;
+  /** Distance moved since pointerdown — used to distinguish tap vs. drag on touch. */
+  private pointerDragDist = 0;
+  private pointerDownX = 0;
+  private pointerDownY = 0;
+  /** Drag distance under this counts as a tap. */
+  private static readonly TAP_THRESHOLD_PX = 12;
 
   constructor(private scene: Phaser.Scene) {
     const kb = scene.input.keyboard;
@@ -47,16 +51,16 @@ export class InputSystem {
       this.pointerActive = true;
       this.pointerX = p.worldX;
       this.pointerY = p.worldY;
-      // On touch, the very first tap while the ball is held is treated as
-      // "reposition only" — players need a way to drag the paddle into
-      // place without accidentally serving (issue #9). A second tap (or a
-      // click on desktop) launches.
-      if (p.wasTouch && this.holdingBall && this.firstTouchAt === 0) {
-        this.firstTouchAt = scene.time.now;
-        return;
+      this.pointerDownX = p.worldX;
+      this.pointerDownY = p.worldY;
+      this.pointerDragDist = 0;
+      // Desktop / mouse: keep the click-to-launch+fire model.
+      // Touch: defer launch decision until pointerup so a drag can be
+      // interpreted as paddle repositioning rather than a serve.
+      if (!p.wasTouch) {
+        this.fire('launch');
+        this.fire('fire');
       }
-      this.fire('launch');
-      this.fire('fire');
     });
     scene.input.on('pointermove', (p: Phaser.Input.Pointer) => {
       // Always track the latest cursor position; only flip to pointer-mode
@@ -65,14 +69,27 @@ export class InputSystem {
       // a keyboard player's paddle.
       this.pointerX = p.worldX;
       this.pointerY = p.worldY;
-      if (p.isDown) this.pointerActive = true;
+      if (p.isDown) {
+        this.pointerActive = true;
+        const dx = p.worldX - this.pointerDownX;
+        const dy = p.worldY - this.pointerDownY;
+        const d = Math.hypot(dx, dy);
+        if (d > this.pointerDragDist) this.pointerDragDist = d;
+      }
     });
     scene.input.on('pointerup', (p: Phaser.Input.Pointer) => {
       this.pointerX = p.worldX;
       this.pointerY = p.worldY;
-      // Touch lift -> stop driving paddle; mouse release keeps pointer mode
-      // until a key press takes over (handled in axisX()).
-      if (p.wasTouch) this.pointerActive = false;
+      if (p.wasTouch) {
+        // Tap (no significant drag) -> launch / fire. Drag -> just lift.
+        // This way mobile users can drag the paddle without accidentally
+        // serving the ball, but a quick tap still does the obvious thing.
+        if (this.pointerDragDist < InputSystem.TAP_THRESHOLD_PX) {
+          this.fire('launch');
+          this.fire('fire');
+        }
+        this.pointerActive = false;
+      }
     });
   }
 
@@ -111,9 +128,9 @@ export class InputSystem {
     return !!this.spaceKey?.isDown || this.scene.input.activePointer.isDown;
   }
 
-  /** GameScene calls this whenever the serve state changes. */
-  setBallHeld(held: boolean): void {
-    this.holdingBall = held;
-    if (!held) this.firstTouchAt = 0;
+  /** No-op kept for compatibility — the new touch model doesn't need
+   *  ballHeld state; tap-vs-drag is decided purely by drag distance. */
+  setBallHeld(_held: boolean): void {
+    /* intentional no-op */
   }
 }

@@ -294,12 +294,11 @@ export class GameScene extends Phaser.Scene {
     const ptr = this.input$.pointerInfo();
     if (axis !== 0) {
       this.paddle.moveBy(axis * Tuning.paddle.speed * (deltaMs / 1000), FIELD_LEFT, FIELD_RIGHT);
-    } else if (ptr.active && ptr.y > Tuning.paddle.y - 200) {
-      // Smooth follow toward pointer.
-      const target = ptr.x;
-      const cur = this.paddle.x;
-      const lerped = cur + (target - cur) * 0.5;
-      this.paddle.setX(lerped, FIELD_LEFT, FIELD_RIGHT);
+    } else if (ptr.active) {
+      // Direct mapping — paddle's x snaps to finger/cursor x. Anywhere on
+      // the canvas works, not just the lower band, so finger placement
+      // higher up on a phone screen still controls the paddle.
+      this.paddle.setX(ptr.x, FIELD_LEFT, FIELD_RIGHT);
     }
 
     // Carry attached balls with paddle.
@@ -942,9 +941,9 @@ export class GameScene extends Phaser.Scene {
   private showServeHint(): void {
     this.serveHint?.destroy();
     this.serveHint = this.add
-      .text(GAME_WIDTH / 2, this.paddle.y - 60, 'TAP TO SERVE', {
+      .text(GAME_WIDTH / 2, this.paddle.y - 60, 'DRAG TO MOVE  ·  TAP TO SERVE', {
         fontFamily: 'Inter, system-ui, sans-serif',
-        fontSize: '18px',
+        fontSize: '16px',
         color: '#9bf2ff',
         fontStyle: '700',
       })
