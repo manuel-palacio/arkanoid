@@ -35,12 +35,12 @@ export class PauseScene extends Phaser.Scene {
     this.makeButton(cx, cy + 0, '▶  RESUME', '#9bf2ff', resume);
     const muteState = () =>
       this.registry.get(RegistryKeys.Muted) ? '🔇  UNMUTE' : '🔊  MUTE';
-    const muteBtnText = (this.makeButton(cx, cy + 70, muteState(), '#ffffff', () => {
+    const muteBtn = this.makeButton(cx, cy + 70, muteState(), '#ffffff', () => {
       const m = !this.registry.get(RegistryKeys.Muted);
       this.registry.set(RegistryKeys.Muted, m);
       getAudio().setMuted(m);
-      muteBtnText.setText(muteState());
-    }) as unknown as { label: Phaser.GameObjects.Text }).label;
+      muteBtn.label.setText(muteState());
+    });
     this.makeButton(cx, cy + 140, '⏹  QUIT TO MENU', '#ff5d6c', toMenu);
 
     // Keyboard shortcuts still work for desktop muscle memory.
@@ -52,7 +52,7 @@ export class PauseScene extends Phaser.Scene {
       const m = !this.registry.get(RegistryKeys.Muted);
       this.registry.set(RegistryKeys.Muted, m);
       getAudio().setMuted(m);
-      muteBtnText.setText(muteState());
+      muteBtn.label.setText(muteState());
     });
     // No global pointerdown-to-resume — explicit buttons only so the
     // user doesn't accidentally dismiss the pause overlay.
@@ -64,32 +64,30 @@ export class PauseScene extends Phaser.Scene {
     text: string,
     color: string,
     onTap: () => void,
-  ): { container: Phaser.GameObjects.Container; label: Phaser.GameObjects.Text } {
+  ): { bg: Phaser.GameObjects.Rectangle; label: Phaser.GameObjects.Text } {
     const w = 280;
     const h = 52;
     const bg = this.add
-      .rectangle(0, 0, w, h, 0x0e1530, 0.95)
-      .setStrokeStyle(2, hexToInt(color), 0.8);
+      .rectangle(x, y, w, h, 0x0e1530, 0.95)
+      .setStrokeStyle(2, hexToInt(color), 0.8)
+      .setDepth(10)
+      .setInteractive({ useHandCursor: true });
     const label = this.add
-      .text(0, 0, text, {
+      .text(x, y, text, {
         fontFamily: 'Inter, system-ui, sans-serif',
         fontSize: '18px',
         color,
         fontStyle: '700',
       })
-      .setOrigin(0.5);
-    const c = this.add.container(x, y, [bg, label]).setSize(w, h);
-    c.setInteractive(
-      new Phaser.Geom.Rectangle(-w / 2, -h / 2, w, h),
-      Phaser.Geom.Rectangle.Contains,
-    );
-    c.on('pointerdown', () => {
+      .setOrigin(0.5)
+      .setDepth(11);
+    bg.on('pointerdown', () => {
       bg.setFillStyle(hexToInt(color), 0.18);
       onTap();
     });
-    c.on('pointerup', () => bg.setFillStyle(0x0e1530, 0.95));
-    c.on('pointerout', () => bg.setFillStyle(0x0e1530, 0.95));
-    return { container: c, label };
+    bg.on('pointerup', () => bg.setFillStyle(0x0e1530, 0.95));
+    bg.on('pointerout', () => bg.setFillStyle(0x0e1530, 0.95));
+    return { bg, label };
   }
 }
 

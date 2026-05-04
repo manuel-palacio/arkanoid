@@ -273,8 +273,10 @@ function makeOverlay(
 
   const closeBtnY = cy + h / 2 - 36;
   const closeBg = scene.add
-    .rectangle(cx, closeBtnY, 140, 44, 0x0e1530, 1)
-    .setStrokeStyle(1, 0x9bf2ff);
+    .rectangle(cx, closeBtnY, 160, 48, 0x0e1530, 1)
+    .setStrokeStyle(1, 0x9bf2ff)
+    .setDepth(20)
+    .setInteractive({ useHandCursor: true });
   const closeText = scene.add
     .text(cx, closeBtnY, 'CLOSE  ✕', {
       fontFamily: 'Inter, system-ui, sans-serif',
@@ -282,20 +284,16 @@ function makeOverlay(
       color: '#9bf2ff',
       fontStyle: '700',
     })
-    .setOrigin(0.5);
-  const closer = scene.add.container(cx, closeBtnY).setSize(160, 56);
-  closer.setInteractive(
-    new Phaser.Geom.Rectangle(-80, -28, 160, 56),
-    Phaser.Geom.Rectangle.Contains,
-  );
+    .setOrigin(0.5)
+    .setDepth(21);
 
   const close = () => {
-    [dim, bg, tt, closeBg, closeText, closer, panel].forEach((o) => o.destroy());
+    [dim, bg, tt, closeBg, closeText, panel].forEach((o) => o.destroy());
     scene.input.keyboard?.off('keydown-ESC', close);
     scene.input.keyboard?.off('keydown-ENTER', close);
     scene.input.keyboard?.off('keydown-SPACE', close);
   };
-  closer.on('pointerdown', close);
+  closeBg.on('pointerdown', close);
   scene.input.keyboard?.once('keydown-ESC', close);
   scene.input.keyboard?.once('keydown-ENTER', close);
   scene.input.keyboard?.once('keydown-SPACE', close);
