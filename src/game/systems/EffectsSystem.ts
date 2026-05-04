@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH } from '../config/gameConfig';
 import { Tuning } from '../config/tuning';
+import { CANDY, CANDY_ROTATION, lighten } from '../config/palette';
 
 export interface Starfield {
   update(deltaMs: number): void;
@@ -9,33 +10,113 @@ export interface Starfield {
 }
 
 /**
- * Three parallax star layers drawn via Graphics — far / mid / near —
- * each at increasing size, brightness, and speed for a sense of depth.
- * Stars wrap around the bottom. Cheap (no particle overhead).
+ * Candy-arcade background. Replaces the legacy starfield while preserving
+ * the same `Starfield` interface so GameScene needs no changes.
+ *
+ * Layers (back to front):
+ *   1. Vertical gradient (CANDY.darkBg → CANDY.shadow), drawn into a 1×H
+ *      canvas texture and stretched to playfield width.
+ *   2. 2-3 large soft glow blobs ('glow-soft' scaled 3-6×) pulsing slowly
+ *      between grape and blueberry tints — dreamy candy-world atmosphere.
+ *   3. Three layers of small CANDY-colored dots ("candy dust") drifting
+ *      diagonally up-left at ~8 px/sec, low alpha 0.15-0.35.
  */
 export function drawStarfield(scene: Phaser.Scene, opts?: { density?: number }): Starfield {
   const density = opts?.density ?? 1;
-  const layers = [
-    { count: Math.floor(60 * density), speed: 8, color: 0x3a4a6a, depth: -101, size: 1, alpha: 0.6 },
-    { count: Math.floor(34 * density), speed: 22, color: 0x87a5d0, depth: -100, size: 1.4, alpha: 0.85 },
-    { count: Math.floor(18 * density), speed: 50, color: 0xddeeff, depth: -99, size: 2, alpha: 1 },
-  ];
-  type Star = { x: number; y: number; sp: number; size: number };
-  const layerStars: Star[][] = [];
-  const layerObjs: Phaser.GameObjects.Graphics[] = [];
 
+  // 1) Gradient base.
+  const gradKey = 'candy-bg-gradient';
+  if (!scene.textures.exists(gradKey)) {
+    const tex = scene.textures.createCanvas(gradKey, 1, GAME_HEIGHT);
+    if (tex) {
+      const ctx = tex.getContext();
+      const grad = ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT);
+      grad.addColorStop(0, '#0d0520');
+      grad.addColorStop(1, '#1a0a2e');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 1, GAME_HEIGHT);
+      tex.refresh();
+    }
+  }
+  const bg = scene.add
+    .image(0, 0, gradKey)
+    .setOrigin(0, 0)
+    .setDisplaySize(GAME_WIDTH, GAME_HEIGHT)
+    .setDepth(-110);
+
+  // 2) Soft glow blobs.
+  const blobs: Phaser.GameObjects.Image[] = [];
+  const blobCfgs = [
+    { x: GAME_WIDTH * 0.22, y: GAME_HEIGHT * 0.28, scale: 5.4, tintA: CANDY.grape, tintB: CANDY.blueberry, alphaA: 0.06, alphaB: 0.1, period: 6200 },
+    { x: GAME_WIDTH * 0.78, y: GAME_HEIGHT * 0.55, scale: 4.2, tintA: CANDY.blueberry, tintB: CANDY.grape, alphaA: 0.07, alphaB: 0.11, period: 7400 },
+    { x: GAME_WIDTH * 0.4, y: GAME_HEIGHT * 0.82, scale: 3.6, tintA: CANDY.cherry, tintB: CANDY.grape, alphaA: 0.05, alphaB: 0.09, period: 5600 },
+  ];
+  for (const c of blobCfgs) {
+    const b = scene.add
+      .image(c.x, c.y, 'glow-soft')
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setScale(c.scale)
+      .setTint(c.tintA)
+      .setAlpha(c.alphaA)
+      .setDepth(-105);
+    blobs.push(b);
+    scene.tweens.add({
+      targets: b,
+      alpha: c.alphaB,
+      duration: c.period,
+      yoyo: true,
+      repeat: -1,
+      ease: 'sine.inOut',
+    });
+    // Color tween via a counter that lerps between the two tints.
+    const fromR = (c.tintA >> 16) & 0xff;
+    const fromG = (c.tintA >> 8) & 0xff;
+    const fromB = c.tintA & 0xff;
+    const toR = (c.tintB >> 16) & 0xff;
+    const toG = (c.tintB >> 8) & 0xff;
+    const toB = c.tintB & 0xff;
+    scene.tweens.addCounter({
+      from: 0,
+      to: 1,
+      duration: c.period * 1.3,
+      yoyo: true,
+      repeat: -1,
+      ease: 'sine.inOut',
+      onUpdate: (tw) => {
+        const t = tw.getValue() ?? 0;
+        const r = Math.round(fromR + (toR - fromR) * t);
+        const g = Math.round(fromG + (toG - fromG) * t);
+        const bl = Math.round(fromB + (toB - fromB) * t);
+        b.setTint((r << 16) | (g << 8) | bl);
+      },
+    });
+  }
+
+  // 3) Candy-dust layers — small CANDY-colored dots drifting up-left.
+  type Dust = { x: number; y: number; size: number; color: number; alpha: number };
+  const layers = [
+    { count: Math.floor(70 * density), speed: 6, sizeRange: [1, 1.6], alphaRange: [0.15, 0.25], depth: -101 },
+    { count: Math.floor(38 * density), speed: 12, sizeRange: [1.4, 2.2], alphaRange: [0.22, 0.32], depth: -100 },
+    { count: Math.floor(20 * density), speed: 22, sizeRange: [1.8, 2.8], alphaRange: [0.28, 0.4], depth: -99 },
+  ];
+  const layerDots: Dust[][] = [];
+  const layerObjs: Phaser.GameObjects.Graphics[] = [];
   for (const l of layers) {
-    const stars: Star[] = [];
+    const dots: Dust[] = [];
     for (let i = 0; i < l.count; i++) {
-      stars.push({
+      dots.push({
         x: Math.random() * GAME_WIDTH,
         y: Math.random() * GAME_HEIGHT,
-        sp: l.speed * (0.7 + Math.random() * 0.6),
-        size: l.size + (Math.random() - 0.5) * 0.6,
+        size: l.sizeRange[0]! + Math.random() * (l.sizeRange[1]! - l.sizeRange[0]!),
+        color: CANDY_ROTATION[Math.floor(Math.random() * CANDY_ROTATION.length)] ?? CANDY.grape,
+        alpha: l.alphaRange[0]! + Math.random() * (l.alphaRange[1]! - l.alphaRange[0]!),
       });
     }
-    layerStars.push(stars);
-    const g = scene.add.graphics({ x: 0, y: 0 }).setDepth(l.depth);
+    layerDots.push(dots);
+    const g = scene.add
+      .graphics({ x: 0, y: 0 })
+      .setDepth(l.depth)
+      .setBlendMode(Phaser.BlendModes.ADD);
     layerObjs.push(g);
   }
 
@@ -46,21 +127,33 @@ export function drawStarfield(scene: Phaser.Scene, opts?: { density?: number }):
       g.clear();
       const conf = layers[idx];
       if (!conf) return;
-      g.fillStyle(conf.color, conf.alpha);
-      const stars = layerStars[idx] ?? [];
-      for (const s of stars) {
-        s.y += s.sp * speedMul * (deltaMs / 1000);
-        if (s.y > GAME_HEIGHT) {
-          s.y = 0;
-          s.x = Math.random() * GAME_WIDTH;
+      const dots = layerDots[idx] ?? [];
+      const dt = deltaMs / 1000;
+      // Drift diagonally up-left at conf.speed px/sec.
+      for (const d of dots) {
+        d.x -= conf.speed * 0.7 * speedMul * dt;
+        d.y -= conf.speed * 0.7 * speedMul * dt;
+        if (d.x < -4) {
+          d.x = GAME_WIDTH + 4;
+          d.y = Math.random() * GAME_HEIGHT;
         }
-        g.fillRect(s.x, s.y, s.size, s.size);
+        if (d.y < -4) {
+          d.y = GAME_HEIGHT + 4;
+          d.x = Math.random() * GAME_WIDTH;
+        }
+        g.fillStyle(d.color, d.alpha);
+        g.fillCircle(d.x, d.y, d.size);
       }
     });
   }
 
   function destroy(): void {
     layerObjs.forEach((o) => o.destroy());
+    blobs.forEach((b) => {
+      scene.tweens.killTweensOf(b);
+      b.destroy();
+    });
+    bg.destroy();
   }
 
   function setSpeedMultiplier(m: number): void {
@@ -78,16 +171,13 @@ export function drawSideGlow(scene: Phaser.Scene, wallThickness: number, hudHeig
   const w = 12;
   const top = wallThickness + hudHeight;
   const h = GAME_HEIGHT - top - wallThickness;
-  // Left.
-  const left = scene.add.rectangle(wallThickness, top, w, h, 0x4ad6ff).setOrigin(0, 0).setDepth(-80);
+  const left = scene.add.rectangle(wallThickness, top, w, h, CANDY.grape).setOrigin(0, 0).setDepth(-80);
   left.setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.18);
-  // Right.
   const right = scene.add
-    .rectangle(GAME_WIDTH - wallThickness - w, top, w, h, 0x4ad6ff)
+    .rectangle(GAME_WIDTH - wallThickness - w, top, w, h, CANDY.blueberry)
     .setOrigin(0, 0)
     .setDepth(-80);
   right.setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.18);
-  // Subtle pulsing glow.
   scene.tweens.add({
     targets: [left, right],
     alpha: 0.32,
@@ -103,23 +193,22 @@ export function shake(scene: Phaser.Scene, durationMs: number, intensity: number
   scene.cameras.main.shake(durationMs, intensity, false);
 }
 
-/**
- * Pool of pre-built spark emitters keyed off the scene. We previously
- * created a fresh `ParticleEmitter` per spark() call, which on a busy
- * frame (multi-ball + 13 brick row) meant a dozen emitters and as many
- * delayedCalls. Now we reuse one emitter per scene and re-tint per call.
- */
+// ----- Spark emitter pool (candy 4-point star) -----
+
 const SCENE_POOL = new WeakMap<Phaser.Scene, Phaser.GameObjects.Particles.ParticleEmitter>();
 
-function getSparkEmitter(scene: Phaser.Scene): Phaser.GameObjects.Particles.ParticleEmitter {
+function getCandySparkEmitter(scene: Phaser.Scene): Phaser.GameObjects.Particles.ParticleEmitter {
   let e = SCENE_POOL.get(scene);
   if (!e) {
     e = scene.add
-      .particles(0, 0, 'spark', {
-        speed: { min: 80, max: 220 },
+      .particles(0, 0, 'spark-candy', {
+        speed: { min: 100, max: 280 },
         angle: { min: 0, max: 360 },
-        lifespan: { min: 220, max: 460 },
-        scale: { start: 0.9, end: 0 },
+        rotate: { min: 0, max: 360 },
+        lifespan: { min: 350, max: 600 },
+        scale: { start: 1.1, end: 0 },
+        alpha: { start: 1, end: 0 },
+        gravityY: 150,
         blendMode: Phaser.BlendModes.ADD,
         emitting: false,
       })
@@ -132,11 +221,22 @@ function getSparkEmitter(scene: Phaser.Scene): Phaser.GameObjects.Particles.Part
   return e;
 }
 
-/** Quick spark burst at (x, y). Pooled — see getSparkEmitter. */
-export function spark(scene: Phaser.Scene, x: number, y: number, color: number, count = 10): void {
-  const e = getSparkEmitter(scene);
+/** Candy-style sparkle burst — spinning 4-point stars that fall slightly. */
+export function candySpark(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  color: number,
+  count = 14,
+): void {
+  const e = getCandySparkEmitter(scene);
   e.setParticleTint(color);
   e.explode(count, x, y);
+}
+
+/** Back-compat alias — old call sites get the upgraded look automatically. */
+export function spark(scene: Phaser.Scene, x: number, y: number, color: number, count = 10): void {
+  candySpark(scene, x, y, color, count);
 }
 
 /** Expanding ring "shockwave" — used on brick destruction for satisfying juice. */
@@ -162,34 +262,87 @@ export function shockwave(
 }
 
 /**
- * Fireworks: spawns N bursts of color-mixed sparks at random positions in
- * the upper playfield, staggered over `durationMs`. Used for level-clear
- * and game-victory celebration.
+ * Signature Candy Crush destruction effect: 8 colored shards flying
+ * outward (rotating + fading), a colored shockwave ring, and a sparkle
+ * cloud. Composes existing primitives so it's the one-stop celebration
+ * for "you broke a thing."
  */
-export function fireworks(scene: Phaser.Scene, durationMs = 1400, bursts = 8): void {
-  const colors = [0x9bf2ff, 0xffd23a, 0xff5dab, 0x4af2a1, 0xb96bff, 0xff9f43];
-  const e = (scene.add
-    .particles(0, 0, 'spark', {
-      speed: { min: 120, max: 380 },
-      angle: { min: 0, max: 360 },
-      lifespan: { min: 600, max: 1100 },
-      scale: { start: 1.1, end: 0 },
-      alpha: { start: 0.95, end: 0 },
-      blendMode: Phaser.BlendModes.ADD,
-      gravityY: 220,
-      emitting: false,
-    })
-    .setDepth(190)) as Phaser.GameObjects.Particles.ParticleEmitter;
-  for (let i = 0; i < bursts; i++) {
-    const t = (i / bursts) * durationMs + Math.random() * 80;
-    const fx = 120 + Math.random() * (GAME_WIDTH - 240);
-    const fy = 100 + Math.random() * (GAME_HEIGHT * 0.45);
-    scene.time.delayedCall(t, () => {
-      e.setParticleTint(colors[Math.floor(Math.random() * colors.length)] ?? 0xffffff);
-      e.explode(28, fx, fy);
+export function candyBurst(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  color: number,
+): void {
+  // 1) Shards — 8 small rectangles flying outward.
+  const neighbors = [color, lighten(color, 0.35), CANDY.white];
+  for (let i = 0; i < 8; i++) {
+    const angle = (i / 8) * Math.PI * 2 + Math.random() * 0.3;
+    const dist = 40 + Math.random() * 40;
+    const tint = neighbors[i % neighbors.length] ?? color;
+    const shard = scene.add
+      .rectangle(x, y, 10, 5, tint, 1)
+      .setDepth(58)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    shard.setRotation(Math.random() * Math.PI * 2);
+    scene.tweens.add({
+      targets: shard,
+      x: x + Math.cos(angle) * dist,
+      y: y + Math.sin(angle) * dist,
+      rotation: shard.rotation + (Math.random() < 0.5 ? -1 : 1) * Math.PI * 2,
+      alpha: 0,
+      duration: 400,
+      ease: 'Cubic.easeOut',
+      onComplete: () => shard.destroy(),
     });
   }
-  scene.time.delayedCall(durationMs + 1200, () => e.destroy());
+  // 2) Pop ring.
+  shockwave(scene, x, y, color, 48);
+  // 3) Sparkle cloud — mix of color + white.
+  candySpark(scene, x, y, color, 12);
+  candySpark(scene, x, y, CANDY.white, 6);
+}
+
+/**
+ * Fireworks-style level-clear celebration: 12 candy bursts scattered
+ * across the upper playfield + a downward rain of candy sparkles +
+ * alternating combo flashes for screen-wide rainbow feel.
+ */
+export function candyCelebration(scene: Phaser.Scene, durationMs = 1600): void {
+  const bursts = 12;
+  for (let i = 0; i < bursts; i++) {
+    const t = (i / bursts) * durationMs + Math.random() * 80;
+    const fx = 100 + Math.random() * (GAME_WIDTH - 200);
+    const fy = 80 + Math.random() * (GAME_HEIGHT * 0.5);
+    const color = CANDY_ROTATION[i % CANDY_ROTATION.length] ?? CANDY.lemon;
+    scene.time.delayedCall(t, () => {
+      candyBurst(scene, fx, fy, color);
+      if (i % 3 === 0) comboFlash(scene, color, 0.2);
+    });
+  }
+  // Rain of candy sparkles falling from the top.
+  const rain = scene.add
+    .particles(0, 0, 'spark-candy', {
+      x: { min: 20, max: GAME_WIDTH - 20 },
+      y: -20,
+      lifespan: 1400,
+      speedY: { min: 200, max: 400 },
+      speedX: { min: -30, max: 30 },
+      gravityY: 400,
+      scale: { start: 0.8, end: 0 },
+      alpha: { start: 0.9, end: 0 },
+      rotate: { min: 0, max: 360 },
+      frequency: 40,
+      blendMode: Phaser.BlendModes.ADD,
+      tint: CANDY_ROTATION,
+    })
+    .setDepth(190);
+  scene.time.delayedCall(durationMs, () => rain.stop());
+  scene.time.delayedCall(durationMs + 1500, () => rain.destroy());
+}
+
+/** Back-compat alias — old call sites get the upgraded celebration. */
+export function fireworks(scene: Phaser.Scene, durationMs = 1400, _bursts = 8): void {
+  candyCelebration(scene, durationMs);
 }
 
 /** Full-screen color flash for big-chain celebrations. */
@@ -205,6 +358,82 @@ export function comboFlash(scene: Phaser.Scene, color: number, alpha = 0.4): voi
     yoyo: true,
     hold: 40,
     onComplete: () => flash.destroy(),
+  });
+}
+
+/**
+ * Escalating combo celebration — call from UI when chains hit milestones.
+ * Combo levels:
+ *   2  : a single candy spark + small "+combo" floater
+ *   3  : spark + shockwave + larger floater
+ *   4  : candyBurst + grape comboFlash + bigger floater
+ *   5+ : candyBurst + cherry comboFlash + 5 staggered rainbow flashes +
+ *         huge floater that cycles through CANDY colors
+ */
+export function comboCandy(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  comboCount: number,
+): void {
+  if (comboCount <= 1) return;
+  if (comboCount === 2) {
+    candySpark(scene, x, y, CANDY.lemon, 8);
+    floatingPoints(scene, x, y, '+COMBO', '#ffd600', 14);
+    return;
+  }
+  if (comboCount === 3) {
+    candySpark(scene, x, y, CANDY.tangerine, 12);
+    shockwave(scene, x, y, CANDY.tangerine, 36);
+    floatingPoints(scene, x, y, 'x3 COMBO', '#ff7a00', 18);
+    return;
+  }
+  if (comboCount === 4) {
+    candyBurst(scene, x, y, CANDY.grape);
+    comboFlash(scene, CANDY.grape, 0.25);
+    floatingPoints(scene, x, y, 'x4 GREAT COMBO', '#aa44ff', 22);
+    return;
+  }
+  // 5+
+  candyBurst(scene, x, y, CANDY.cherry);
+  comboFlash(scene, CANDY.cherry, 0.35);
+  for (let i = 0; i < 5; i++) {
+    const c = CANDY_ROTATION[i % CANDY_ROTATION.length] ?? CANDY.lemon;
+    scene.time.delayedCall(60 * (i + 1), () => comboFlash(scene, c, 0.18));
+  }
+  // Rainbow-cycling floater.
+  const t = scene.add
+    .text(x, y, `x${comboCount} ULTRA COMBO`, {
+      fontFamily: 'Inter, system-ui, sans-serif',
+      fontSize: '26px',
+      color: '#ffd600',
+      fontStyle: '900',
+    })
+    .setOrigin(0.5)
+    .setDepth(70)
+    .setShadow(0, 0, '#ffffff', 14, true, true)
+    .setScale(0.5);
+  scene.tweens.add({ targets: t, scale: 1.05, duration: 120, ease: 'Back.easeOut' });
+  let idx = 0;
+  const cycle = scene.time.addEvent({
+    delay: 90,
+    repeat: 7,
+    callback: () => {
+      const c = CANDY_ROTATION[idx++ % CANDY_ROTATION.length] ?? CANDY.cherry;
+      t.setColor('#' + c.toString(16).padStart(6, '0'));
+    },
+  });
+  scene.tweens.add({
+    targets: t,
+    y: y - 50,
+    alpha: 0,
+    duration: 900,
+    delay: 200,
+    ease: 'Quad.easeOut',
+    onComplete: () => {
+      cycle.remove();
+      t.destroy();
+    },
   });
 }
 
@@ -228,7 +457,24 @@ export function paddleFlare(scene: Phaser.Scene, x: number, y: number, tint = 0x
   });
 }
 
-/** Floating "+points" text that drifts up and fades. */
+/** Pick a candy CSS color string based on the points magnitude. */
+export function candyPointsCss(points: number): string {
+  if (points >= 500) return '#ff3366'; // cherry — gradient handled at render
+  if (points >= 300) return '#ff3366';
+  if (points >= 100) return '#ff7a00';
+  return '#ffd600';
+}
+
+/** Pick a font size based on points (clamped to [14, 22]). */
+export function candyPointsSize(points: number): number {
+  return Math.max(14, Math.min(22, 14 + Math.floor(points / 200)));
+}
+
+/**
+ * Floating "+points" text. Begins with a brief scale-up pop, then drifts
+ * upward and fades. Optional `points` triggers candy color/size selection
+ * (and rainbow alternation for 500+ pts).
+ */
 export function floatingPoints(
   scene: Phaser.Scene,
   x: number,
@@ -236,24 +482,62 @@ export function floatingPoints(
   text: string,
   color = '#ffffff',
   size = 14,
+  points?: number,
 ): void {
+  let textColor = color;
+  let textSize = size;
+  let rainbow = false;
+  if (points != null) {
+    textColor = candyPointsCss(points);
+    textSize = candyPointsSize(points);
+    if (points >= 500) rainbow = true;
+  }
   const t = scene.add
     .text(x, y, text, {
       fontFamily: 'Inter, system-ui, sans-serif',
-      fontSize: `${size}px`,
-      color,
+      fontSize: `${textSize}px`,
+      color: textColor,
       fontStyle: '700',
     })
     .setOrigin(0.5)
     .setDepth(70)
-    .setShadow(0, 0, color, 8, true, true);
+    .setShadow(0, 0, textColor, 8, true, true)
+    .setScale(0.5);
+
+  // Brief scale-up pop before the drift.
+  scene.tweens.add({
+    targets: t,
+    scale: 1,
+    duration: 80,
+    ease: 'Back.easeOut',
+  });
+
+  // Rainbow alternation for high-value points.
+  let cycle: Phaser.Time.TimerEvent | undefined;
+  if (rainbow) {
+    let i = 0;
+    const palette = ['#ff3366', '#aa44ff'];
+    cycle = scene.time.addEvent({
+      delay: 90,
+      repeat: 7,
+      callback: () => {
+        const c = palette[i++ % palette.length] ?? textColor;
+        t.setColor(c);
+      },
+    });
+  }
+
   scene.tweens.add({
     targets: t,
     y: y - 36,
     alpha: 0,
     duration: 700,
+    delay: 80,
     ease: 'Quad.easeOut',
-    onComplete: () => t.destroy(),
+    onComplete: () => {
+      cycle?.remove();
+      t.destroy();
+    },
   });
 }
 

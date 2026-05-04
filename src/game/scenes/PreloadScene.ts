@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH, RegistryKeys, SceneKeys } from '../config/gameConfig';
 import { generateTextures } from '../utils/textures';
+import { TextureFactory } from '../gfx/TextureFactory';
 import { getAudio } from '../audio/AudioManager';
 
 export class PreloadScene extends Phaser.Scene {
@@ -9,8 +10,11 @@ export class PreloadScene extends Phaser.Scene {
   }
 
   create(): void {
-    // Procedural textures (no disk loads).
+    // Procedural textures (no disk loads). Legacy textures (paddle-base,
+    // ball, spark, etc.) are still generated for systems that haven't been
+    // migrated yet; the candy textures live alongside them under new keys.
     generateTextures(this);
+    new TextureFactory(this).generateAll();
 
     // Loading UI — a brief progress bar while the AudioManager builds buffers.
     const cx = GAME_WIDTH / 2;

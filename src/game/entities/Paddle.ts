@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { Tuning } from '../config/tuning';
+import { CANDY } from '../config/palette';
 
 export type PaddleMode = 'normal' | 'laser';
 
@@ -8,71 +9,63 @@ export type PaddleMode = 'normal' | 'laser';
  * body for overlap detection with falling power-ups and laser projectiles.
  * The ball's bounce against the paddle is custom (CollisionSystem) — Arcade's
  * default bounce is intentionally bypassed.
+ *
+ * Visuals: a single 'paddle-candy' texture re-tinted at runtime — blueberry
+ * by default, mint while sticky, tangerine while laser. A 'glow-soft' halo
+ * behind the body breathes alpha so the paddle feels alive while idle.
  */
 export class Paddle {
   readonly sprite: Phaser.Physics.Arcade.Image;
   private currentWidth: number;
   private mode: PaddleMode = 'normal';
   private sticky = false;
-  private shine: Phaser.GameObjects.Image;
-  /** sweep position in [-0.15, 1.15]; outside [0, 1] the shine is invisible */
-  private shineProgress = -0.2;
+  private glow: Phaser.GameObjects.Image;
 
   constructor(
     private scene: Phaser.Scene,
     x: number,
     y: number,
   ) {
-    const sp = scene.physics.add.image(x, y, 'paddle-base');
+    // Soft halo behind the paddle.
+    this.glow = scene.add
+      .image(x, y, 'glow-soft')
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(19)
+      .setAlpha(0.32)
+      .setTint(CANDY.blueberry);
+
+    const sp = scene.physics.add.image(x, y, 'paddle-candy');
     sp.setOrigin(0.5);
     sp.setImmovable(true);
     sp.setCollideWorldBounds(false);
     sp.body.allowGravity = false;
     sp.setDepth(20);
+    sp.setTint(CANDY.blueberry);
     this.sprite = sp;
     this.currentWidth = Tuning.paddle.baseWidth;
-    this.applyWidth();
+    this.applyWidth(false);
 
-    // Shining effect: a soft white gradient that periodically sweeps
-    // left-to-right across the paddle. Drawn additively above the body.
-    this.shine = scene.add
-      .image(x, y, 'paddle-shine')
-      .setBlendMode(Phaser.BlendModes.ADD)
-      .setDepth(21)
-      .setAlpha(0)
-      .setRotation(-0.18); // a little tilt — feels metallic
-    scene.tweens.addCounter({
-      from: -0.2,
-      to: 1.2,
-      duration: 1100,
+    // Idle pulsing glow — sine breathing, never finishes.
+    scene.tweens.add({
+      targets: this.glow,
+      alpha: { from: 0.3, to: 0.6 },
+      duration: 1800,
+      yoyo: true,
       repeat: -1,
-      repeatDelay: 1700,
-      ease: 'sine.in',
-      onUpdate: (tw) => {
-        this.shineProgress = tw.getValue() ?? -0.2;
-      },
+      ease: 'sine.inOut',
     });
   }
 
   destroy(): void {
     this.scene.tweens.killTweensOf(this.sprite);
-    this.scene.tweens.killTweensOf(this.shine);
-    this.shine.destroy();
+    this.scene.tweens.killTweensOf(this.glow);
+    this.glow.destroy();
     this.sprite.destroy();
   }
 
-  /** Per-frame: sync the shine sprite to the paddle's current x. */
+  /** Per-frame: keep the glow position synced. */
   update(): void {
-    const t = this.shineProgress;
-    if (t < 0 || t > 1) {
-      this.shine.setAlpha(0);
-      return;
-    }
-    // Soft fade-in/out so edges of the sweep don't pop.
-    const fade = Math.sin(t * Math.PI);
-    this.shine.setAlpha(fade * 0.85);
-    const px = this.left + this.currentWidth * t;
-    this.shine.setPosition(px, this.sprite.y);
+    this.glow.setPosition(this.sprite.x, this.sprite.y);
   }
 
   get x(): number {
@@ -113,12 +106,13 @@ export class Paddle {
 
   setSticky(s: boolean): void {
     this.sticky = s;
+    this.refreshTint();
   }
 
   setMode(m: PaddleMode): void {
     this.mode = m;
-    this.sprite.setTexture(m === 'laser' ? 'paddle-laser' : 'paddle-base');
-    this.applyWidth();
+    this.refreshTint();
+    this.applyWidth(false);
   }
 
   setX(x: number, minX: number, maxX: number): void {
@@ -138,23 +132,57 @@ export class Paddle {
       Tuning.paddle.minWidth,
       Tuning.paddle.maxWidth,
     );
-    this.applyWidth();
+    this.applyWidth(true);
   }
 
   resetWidth(): void {
     this.currentWidth = Tuning.paddle.baseWidth;
-    this.applyWidth();
+    this.applyWidth(false);
   }
 
-  private applyWidth(): void {
-    // Texture is generated at maxWidth; scale to current width.
-    const scaleX = this.currentWidth / Tuning.paddle.maxWidth;
-    this.sprite.setScale(scaleX, 1);
-    // Refresh body to match visible size.
+  /**
+   * Apply the current width. When `animate`, the visual scaleX overshoots
+   * via Back.easeOut for a satisfying candy-stretch on expand/shrink. The
+   * body is resized synchronously so collision stays accurate even while
+   * the sprite is mid-bounce.
+   */
+  private applyWidth(animate: boolean): void {
+    const sx = this.currentWidth / Tuning.paddle.maxWidth;
     this.sprite.body?.setSize(this.currentWidth, Tuning.paddle.height, true);
+    this.scene.tweens.killTweensOf(this.sprite);
+    if (animate) {
+      this.scene.tweens.add({
+        targets: this.sprite,
+        scaleX: sx,
+        duration: 260,
+        ease: 'Back.easeOut',
+      });
+    } else {
+      this.sprite.setScale(sx, this.sprite.scaleY || 1);
+    }
   }
 
-  /** Visual flash when hit by a power-up. */
+  /** Recompute paddle tint from current state (mode + sticky). */
+  private refreshTint(): void {
+    let tint: number = CANDY.blueberry;
+    if (this.mode === 'laser') tint = CANDY.tangerine;
+    else if (this.sticky) tint = CANDY.mint;
+    this.sprite.setTint(tint);
+    this.glow.setTint(tint);
+  }
+
+  /** Brief vertical squish on ball impact. */
+  squish(): void {
+    this.scene.tweens.killTweensOf(this.sprite);
+    this.scene.tweens.add({
+      targets: this.sprite,
+      scaleY: { from: 0.85, to: 1 },
+      duration: 180,
+      ease: 'Back.easeOut',
+    });
+  }
+
+  /** Visual flash when picking up a power-up. */
   pulse(): void {
     this.scene.tweens.add({
       targets: this.sprite,

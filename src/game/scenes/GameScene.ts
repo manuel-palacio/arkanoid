@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { Events, GAME_HEIGHT, GAME_WIDTH, RegistryKeys, SceneKeys } from '../config/gameConfig';
 import { Tuning } from '../config/tuning';
-import { Ball } from '../entities/Ball';
+import { Ball, MULTIBALL_TINTS } from '../entities/Ball';
 import { Brick } from '../entities/Brick';
 import { Paddle } from '../entities/Paddle';
 import { PowerUp } from '../entities/PowerUp';
@@ -15,6 +15,7 @@ import {
   wallReflect,
 } from '../systems/CollisionSystem';
 import {
+  candyBurst,
   drawSideGlow,
   drawStarfield,
   fireworks,
@@ -22,7 +23,6 @@ import {
   hitstop,
   paddleFlare,
   shake,
-  shockwave,
   spark,
   type Starfield,
 } from '../systems/EffectsSystem';
@@ -495,6 +495,7 @@ export class GameScene extends Phaser.Scene {
       if (wr.hit) {
         ball.setPosition(wr.x, wr.y);
         ball.setVelocity(wr.vx, wr.vy);
+        ball.onWallBounce(this);
         getAudio().playSfx('wall', 0.5);
       }
 
@@ -544,6 +545,8 @@ export class GameScene extends Phaser.Scene {
         ball.setVelocity(vx, vy);
         ball.setPosition(ball.x, this.paddle.top - ball.radius - 0.5);
         paddleFlare(this, ball.x, this.paddle.top, ball.tint);
+        this.paddle.squish();
+        ball.onPaddleBounce(this);
         getAudio().playSfx('paddle');
         haptic.tick();
         // Near-miss detection: hit landed in the outer 18% of the paddle.
@@ -605,8 +608,7 @@ export class GameScene extends Phaser.Scene {
   private handleBrickDestroyed(brick: Brick, _ball: Ball): void {
     getAudio().playSfx('brickBreak');
     haptic.bump();
-    spark(this, brick.x, brick.y, brick.color, 18);
-    shockwave(this, brick.x, brick.y, brick.color);
+    candyBurst(this, brick.x, brick.y, brick.color);
     shake(this, Tuning.effects.shakeBrickDurationMs, Tuning.effects.shakeBrickIntensity);
     hitstop(this);
     const { points, chain } = this.score.brickBroken(brick.archetype.score, this.time.now);
@@ -617,6 +619,7 @@ export class GameScene extends Phaser.Scene {
       `+${points}`,
       hexToCss(brick.color),
       chain >= 3 ? 18 : 14,
+      points,
     );
     this.events.emit(Events.ScoreChanged, this.score.score, this.score.highScore, points);
     if (chain >= 3) this.events.emit(Events.Combo, chain);
@@ -848,7 +851,7 @@ export class GameScene extends Phaser.Scene {
         pu.sprite.y - Tuning.powerups.height / 2 < this.paddle.bottom
       ) {
         this.applyPowerUp(pu.kind);
-        pu.destroy();
+        pu.collect();
         removed.push(pu);
         continue;
       }
@@ -993,9 +996,12 @@ export class GameScene extends Phaser.Scene {
   private spawnMultiBall(): void {
     const sources = [...this.balls];
     if (sources.length === 0) return;
+    let extraIdx = 0;
     for (const src of sources) {
       for (let i = 0; i < 2; i++) {
-        const b = new Ball(this, src.x, src.y);
+        const tint = MULTIBALL_TINTS[extraIdx % MULTIBALL_TINTS.length];
+        extraIdx++;
+        const b = new Ball(this, src.x, src.y, tint);
         b.isAttached = false;
         const speed = Math.max(Tuning.ball.minSpeed, src.speed || Tuning.ball.baseSpeed);
         const angle = (Math.random() * 0.6 - 0.3) + (i === 0 ? -0.6 : 0.6);

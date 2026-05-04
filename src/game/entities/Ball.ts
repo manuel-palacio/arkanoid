@@ -1,9 +1,17 @@
 import Phaser from 'phaser';
 import { Tuning } from '../config/tuning';
+import { CANDY } from '../config/palette';
+
+/** Multi-ball extras cycle through this palette in order. */
+export const MULTIBALL_TINTS: number[] = [CANDY.cherry, CANDY.lime, CANDY.grape];
 
 /**
  * Ball entity. We use Arcade Physics for body bookkeeping but drive velocity
  * manually — bounce reflection is computed by the CollisionSystem.
+ *
+ * Visuals: a glossy 'ball-candy' sphere tinted lemon by default; multi-ball
+ * extras can pass a tint override. A 'glow-soft' particle trail emits behind
+ * the ball every ~3 frames, tinted to the ball's color, for a candy comet.
  */
 export class Ball {
   readonly sprite: Phaser.Physics.Arcade.Image;
@@ -14,13 +22,13 @@ export class Ball {
   /** legacy graphics trail kept as a thin core fade */
   private trail: Phaser.GameObjects.Graphics;
   private trailPoints: Array<{ x: number; y: number; t: number }> = [];
-  /** additive particle trail for the glow */
+  /** soft glow trail (particles emitted along the ball's path) */
   private glowTrail: Phaser.GameObjects.Particles.ParticleEmitter;
-  /** unique tint cycle for distinguishing balls in multi-ball */
+  /** unique tint for distinguishing balls in multi-ball */
   readonly tint: number;
 
-  constructor(scene: Phaser.Scene, x: number, y: number) {
-    const sp = scene.physics.add.image(x, y, 'ball');
+  constructor(scene: Phaser.Scene, x: number, y: number, tintOverride?: number) {
+    const sp = scene.physics.add.image(x, y, 'ball-candy');
     sp.setCircle(Tuning.ball.radius);
     sp.setOrigin(0.5);
     sp.body.allowGravity = false;
@@ -32,27 +40,26 @@ export class Ball {
     // paddle in a single frame. See issue #1.
     (sp.body as Phaser.Physics.Arcade.Body).moves = false;
     this.sprite = sp;
+
+    this.tint = tintOverride ?? CANDY.lemon;
+    sp.setTint(this.tint);
+
     this.trail = scene.add.graphics({ x: 0, y: 0 }).setDepth(24);
 
-    // A unique tint per ball so multi-ball is readable.
-    const palette = [0x9bf2ff, 0xff5dab, 0xffd23a, 0x4af2a1, 0xb96bff];
-    this.tint = palette[(Ball.spawnCounter++ % palette.length)] ?? 0x9bf2ff;
-
+    // Soft candy comet trail — additive glow blobs along the path.
     this.glowTrail = scene.add
-      .particles(0, 0, 'spark', {
+      .particles(0, 0, 'glow-soft', {
         follow: sp,
-        frequency: 18,
-        lifespan: 280,
+        frequency: 50,
+        lifespan: 200,
         speed: 0,
-        scale: { start: 0.9, end: 0 },
-        alpha: { start: 0.55, end: 0 },
+        scale: { start: 0.6, end: 0 },
+        alpha: { start: 0.4, end: 0 },
         tint: this.tint,
         blendMode: Phaser.BlendModes.ADD,
       })
       .setDepth(23);
   }
-
-  private static spawnCounter = 0;
 
   destroy(): void {
     this.sprite.destroy();
@@ -135,9 +142,28 @@ export class Ball {
       const p = this.trailPoints[i];
       if (!p) continue;
       const a = (i / this.trailPoints.length) * 0.55;
-      this.trail.fillStyle(Tuning.ball.trailColor, a);
+      this.trail.fillStyle(this.tint, a);
       this.trail.fillCircle(p.x, p.y, Tuning.ball.radius * (i / this.trailPoints.length));
     }
+  }
+
+  /** Brief tint flash to white on wall bounce, then back to candy color. */
+  onWallBounce(scene: Phaser.Scene): void {
+    this.sprite.setTint(CANDY.white);
+    scene.time.delayedCall(80, () => {
+      if (this.sprite.active) this.sprite.setTint(this.tint);
+    });
+  }
+
+  /** Squish-and-rebound scale pop on paddle contact. */
+  onPaddleBounce(scene: Phaser.Scene): void {
+    scene.tweens.killTweensOf(this.sprite);
+    scene.tweens.add({
+      targets: this.sprite,
+      scale: { from: 1.3, to: 1 },
+      duration: 150,
+      ease: 'Back.easeOut',
+    });
   }
 
   /** Snapshot current position for swept collision tests. */
