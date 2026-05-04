@@ -62,6 +62,7 @@ export class GameScene extends Phaser.Scene {
   private debug = false;
   private debugGfx?: Phaser.GameObjects.Graphics;
   private hitstopRemainingMs = 0;
+  private serveHint?: Phaser.GameObjects.Text;
 
   constructor() {
     super(SceneKeys.Game);
@@ -102,6 +103,7 @@ export class GameScene extends Phaser.Scene {
       this.registry.set(RegistryKeys.Muted, m);
       getAudio().setMuted(m);
     });
+    this.events.on('ui-pause-request', () => this.tryPause());
 
     // UI scene + initial events.
     if (!this.scene.isActive(SceneKeys.UI)) {
@@ -258,6 +260,7 @@ export class GameScene extends Phaser.Scene {
     if (launched) {
       getAudio().playSfx('paddle');
       this.input$?.setBallHeld(false);
+      this.hideServeHint();
     }
   }
 
@@ -779,6 +782,36 @@ export class GameScene extends Phaser.Scene {
     void speedMul;
     this.balls.push(b);
     this.input$?.setBallHeld(true);
+    this.showServeHint();
+  }
+
+  private showServeHint(): void {
+    this.serveHint?.destroy();
+    this.serveHint = this.add
+      .text(GAME_WIDTH / 2, this.paddle.y - 60, 'TAP TO SERVE', {
+        fontFamily: 'Inter, system-ui, sans-serif',
+        fontSize: '18px',
+        color: '#9bf2ff',
+        fontStyle: '700',
+      })
+      .setOrigin(0.5)
+      .setDepth(50)
+      .setAlpha(0.9);
+    this.tweens.add({
+      targets: this.serveHint,
+      alpha: { from: 0.55, to: 1 },
+      duration: 600,
+      yoyo: true,
+      repeat: -1,
+      ease: 'sine.inOut',
+    });
+  }
+
+  private hideServeHint(): void {
+    if (!this.serveHint) return;
+    this.tweens.killTweensOf(this.serveHint);
+    this.serveHint.destroy();
+    this.serveHint = undefined;
   }
 
   private drawFrame(): void {
