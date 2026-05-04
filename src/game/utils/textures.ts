@@ -64,37 +64,102 @@ function generatePaddleTextures(scene: Phaser.Scene): void {
   // Generated at maxWidth so we can crop/scale visually.
   const w = Tuning.paddle.maxWidth;
   const h = Tuning.paddle.height;
-  const g = scene.add.graphics({ x: 0, y: 0 });
-  // base
-  g.fillStyle(0x0e1530, 1);
-  rounded(g, 0, 0, w, h, h / 2);
-  // body gradient (faked)
-  g.fillStyle(Tuning.paddle.color, 1);
-  rounded(g, 2, 2, w - 4, h - 4, (h - 4) / 2);
-  // accent stripe
-  g.fillStyle(Tuning.paddle.accentColor, 0.5);
-  g.fillRect(8, 4, w - 16, 2);
-  // tip caps
-  g.fillStyle(0xffffff, 0.85);
-  g.fillCircle(8, h / 2, 3);
-  g.fillCircle(w - 8, h / 2, 3);
-  g.generateTexture('paddle-base', w, h);
-  g.destroy();
 
-  // laser-mode paddle accent
-  const g2 = scene.add.graphics({ x: 0, y: 0 });
-  g2.fillStyle(0x0e1530, 1);
-  rounded(g2, 0, 0, w, h, h / 2);
-  g2.fillStyle(0xff5dab, 1);
-  rounded(g2, 2, 2, w - 4, h - 4, (h - 4) / 2);
-  g2.fillStyle(0xffffff, 0.6);
-  g2.fillRect(8, 4, w - 16, 2);
-  g2.fillStyle(0xffffff, 0.95);
-  // gun barrels
-  g2.fillRect(6, -3, 4, 4);
-  g2.fillRect(w - 10, -3, 4, 4);
-  g2.generateTexture('paddle-laser', w, h);
-  g2.destroy();
+  drawPaddle(scene, 'paddle-base', w, h, {
+    bodyTop: 0xb9faff,
+    bodyMid: Tuning.paddle.color,
+    bodyBottom: 0x3aa3c5,
+    edgeColor: 0x081224,
+    accent: 0xffffff,
+    laserBarrels: false,
+  });
+
+  drawPaddle(scene, 'paddle-laser', w, h, {
+    bodyTop: 0xffd1ee,
+    bodyMid: 0xff5dab,
+    bodyBottom: 0xa12a6e,
+    edgeColor: 0x1a0a14,
+    accent: 0xffffff,
+    laserBarrels: true,
+  });
+
+  // Animated shine sweep — a soft horizontal gradient highlight that
+  // travels across the paddle. Generated once via a Canvas texture so we
+  // get a true smooth gradient (Graphics.fill uses solid alpha bands).
+  generateShineTexture(scene, Math.round(w * 0.22), h + 6);
+}
+
+interface PaddleDrawOpts {
+  bodyTop: number;
+  bodyMid: number;
+  bodyBottom: number;
+  edgeColor: number;
+  accent: number;
+  laserBarrels: boolean;
+}
+
+function drawPaddle(
+  scene: Phaser.Scene,
+  textureKey: string,
+  w: number,
+  h: number,
+  opts: PaddleDrawOpts,
+): void {
+  const g = scene.add.graphics({ x: 0, y: 0 });
+  // outer frame / shadow
+  g.fillStyle(opts.edgeColor, 1);
+  rounded(g, 0, 0, w, h, h / 2);
+  // body — three horizontal bands fake a vertical gradient.
+  g.fillStyle(opts.bodyTop, 1);
+  rounded(g, 2, 2, w - 4, h - 4, (h - 4) / 2);
+  g.fillStyle(opts.bodyMid, 1);
+  g.fillRect(2, h * 0.4, w - 4, h * 0.4);
+  g.fillStyle(opts.bodyBottom, 1);
+  rounded(g, 2, h - 6, w - 4, 4, 2);
+  // top gloss strip — bright thin highlight.
+  g.fillStyle(opts.accent, 0.85);
+  g.fillRect(8, 3, w - 16, 1.8);
+  g.fillStyle(opts.accent, 0.45);
+  g.fillRect(10, 5.5, w - 20, 1);
+  // bottom shadow rim — dark thin band.
+  g.fillStyle(opts.edgeColor, 0.55);
+  g.fillRect(8, h - 4, w - 16, 1.2);
+  // panel division lines (faint vertical seams) every ~26px.
+  g.lineStyle(1, opts.edgeColor, 0.35);
+  for (let x = 26; x < w - 16; x += 26) {
+    g.lineBetween(x, 4, x, h - 4);
+  }
+  // glowing tip caps.
+  g.fillStyle(opts.accent, 0.95);
+  g.fillCircle(8, h / 2, 3.5);
+  g.fillCircle(w - 8, h / 2, 3.5);
+  g.fillStyle(opts.accent, 0.4);
+  g.fillCircle(8, h / 2, 5);
+  g.fillCircle(w - 8, h / 2, 5);
+  // optional gun barrels for laser mode.
+  if (opts.laserBarrels) {
+    g.fillStyle(opts.accent, 1);
+    g.fillRect(6, -3, 4, 4);
+    g.fillRect(w - 10, -3, 4, 4);
+  }
+  g.generateTexture(textureKey, w, h);
+  g.destroy();
+}
+
+function generateShineTexture(scene: Phaser.Scene, w: number, h: number): void {
+  // Use a CanvasTexture for a real linear gradient — Graphics fill bands
+  // would produce visible alpha steps.
+  const tex = scene.textures.createCanvas('paddle-shine', w, h);
+  if (!tex) return;
+  const ctx = tex.getContext();
+  const grad = ctx.createLinearGradient(0, 0, w, 0);
+  grad.addColorStop(0, 'rgba(255,255,255,0)');
+  grad.addColorStop(0.45, 'rgba(255,255,255,0.95)');
+  grad.addColorStop(0.55, 'rgba(255,255,255,0.95)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, h);
+  tex.refresh();
 }
 
 function generateBallTexture(scene: Phaser.Scene): void {

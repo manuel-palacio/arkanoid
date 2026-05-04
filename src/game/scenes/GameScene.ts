@@ -155,6 +155,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     this.handlePaddleInput(delta);
+    this.paddle.update();
     this.tickBalls(time, delta);
     this.tickPowerups();
     this.tickProjectiles(time);

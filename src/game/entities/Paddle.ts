@@ -14,6 +14,9 @@ export class Paddle {
   private currentWidth: number;
   private mode: PaddleMode = 'normal';
   private sticky = false;
+  private shine: Phaser.GameObjects.Image;
+  /** sweep position in [-0.15, 1.15]; outside [0, 1] the shine is invisible */
+  private shineProgress = -0.2;
 
   constructor(
     private scene: Phaser.Scene,
@@ -29,10 +32,47 @@ export class Paddle {
     this.sprite = sp;
     this.currentWidth = Tuning.paddle.baseWidth;
     this.applyWidth();
+
+    // Shining effect: a soft white gradient that periodically sweeps
+    // left-to-right across the paddle. Drawn additively above the body.
+    this.shine = scene.add
+      .image(x, y, 'paddle-shine')
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(21)
+      .setAlpha(0)
+      .setRotation(-0.18); // a little tilt — feels metallic
+    scene.tweens.addCounter({
+      from: -0.2,
+      to: 1.2,
+      duration: 1100,
+      repeat: -1,
+      repeatDelay: 1700,
+      ease: 'sine.in',
+      onUpdate: (tw) => {
+        this.shineProgress = tw.getValue() ?? -0.2;
+      },
+    });
   }
 
   destroy(): void {
+    this.scene.tweens.killTweensOf(this.sprite);
+    this.scene.tweens.killTweensOf(this.shine);
+    this.shine.destroy();
     this.sprite.destroy();
+  }
+
+  /** Per-frame: sync the shine sprite to the paddle's current x. */
+  update(): void {
+    const t = this.shineProgress;
+    if (t < 0 || t > 1) {
+      this.shine.setAlpha(0);
+      return;
+    }
+    // Soft fade-in/out so edges of the sweep don't pop.
+    const fade = Math.sin(t * Math.PI);
+    this.shine.setAlpha(fade * 0.85);
+    const px = this.left + this.currentWidth * t;
+    this.shine.setPosition(px, this.sprite.y);
   }
 
   get x(): number {
