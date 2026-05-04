@@ -26,6 +26,8 @@ export function buildLevel(scene: Phaser.Scene, def: LevelDef): ParsedLevel {
 
   let breakable = 0;
 
+  validateLevelDef(def);
+
   def.rows.forEach((row, r) => {
     for (let c = 0; c < cols; c++) {
       const sym = row[c] ?? '.';
@@ -40,6 +42,34 @@ export function buildLevel(scene: Phaser.Scene, def: LevelDef): ParsedLevel {
   });
 
   return { bricks, breakableCount: breakable };
+}
+
+/**
+ * Returns warning strings for a LevelDef without mutating it. Logs each
+ * warning to the console in dev builds so authors notice silent
+ * truncations or unknown symbols.
+ */
+export function validateLevelDef(def: LevelDef): string[] {
+  const cols = Tuning.bricks.cols;
+  const warnings: string[] = [];
+  def.rows.forEach((row, r) => {
+    if (row.length > cols) {
+      warnings.push(
+        `Level ${def.id} "${def.name}" row ${r} has ${row.length} chars; only the first ${cols} are used.`,
+      );
+    }
+    for (let c = 0; c < Math.min(row.length, cols); c++) {
+      const sym = row[c] ?? '.';
+      if (sym === '.' || sym === ' ') continue;
+      if (!archetypeForSymbol(sym)) {
+        warnings.push(`Level ${def.id} row ${r} col ${c}: unknown symbol "${sym}".`);
+      }
+    }
+  });
+  if (warnings.length && import.meta.env?.DEV) {
+    for (const w of warnings) console.warn(`[buildLevel] ${w}`);
+  }
+  return warnings;
 }
 
 /** Pure helper used by tests — returns counts without building scene objects. */

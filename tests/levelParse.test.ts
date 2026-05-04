@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { analyzeLevel } from '../src/game/systems/LevelSystem';
+import { analyzeLevel, validateLevelDef } from '../src/game/systems/LevelSystem';
 import { LEVELS } from '../src/game/levels';
 
 describe('LevelSystem.analyzeLevel', () => {
@@ -30,5 +30,27 @@ describe('LevelSystem.analyzeLevel', () => {
     expect(a.total).toBe(3);
     expect(a.indestructible).toBe(3);
     expect(a.breakable).toBe(0);
+  });
+});
+
+describe('validateLevelDef', () => {
+  it('warns on rows wider than cols', () => {
+    const w = validateLevelDef({
+      id: 99,
+      name: 'TEST',
+      rows: ['SSSSSSSSSSSSSSS'], // 15 chars, max 13
+    });
+    expect(w.some((m) => m.includes('15 chars'))).toBe(true);
+  });
+
+  it('warns on unknown symbols', () => {
+    const w = validateLevelDef({ id: 99, name: 'TEST', rows: ['SXS'] });
+    expect(w.some((m) => m.includes('"X"'))).toBe(true);
+  });
+
+  it('passes shipped levels with no warnings', () => {
+    for (const def of LEVELS) {
+      expect(validateLevelDef(def)).toEqual([]);
+    }
   });
 });
