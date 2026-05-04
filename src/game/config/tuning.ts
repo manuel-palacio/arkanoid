@@ -57,6 +57,20 @@ export const Tuning = {
     fieldOffsetX: 40,
     fieldOffsetY: 100,
     flashMs: 70,
+    /**
+     * Row-cycled rainbow used for standard ("S") bricks when a level has
+     * no palette override. Picks colors by row index so a level full of
+     * S bricks reads as horizontal color stripes rather than a single
+     * cold-blue field.
+     */
+    rainbowRowColors: [
+      0xff5d6c, // red
+      0xff9f43, // orange
+      0xffd23a, // yellow
+      0x4af2a1, // green
+      0x4ad6ff, // blue
+      0xb96bff, // purple
+    ],
   },
 
   // Power-ups

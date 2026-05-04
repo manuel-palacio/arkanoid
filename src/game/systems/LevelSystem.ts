@@ -35,7 +35,7 @@ export function buildLevel(scene: Phaser.Scene, def: LevelDef): ParsedLevel {
       if (!arche) continue;
       const x = ox + c * (bw + colGap) + bw / 2;
       const y = oy + r * (bh + rowGap) + bh / 2;
-      const colorOverride = paletteColorFor(def, arche);
+      const colorOverride = paletteColorFor(def, arche) ?? defaultRowColor(arche, r);
       const brick = new Brick(scene, x, y, arche, colorOverride);
       bricks.push(brick);
       if (brick.isBreakable()) breakable++;
@@ -73,6 +73,19 @@ function paletteColorFor(def: LevelDef, arche: BrickArchetype): number | undefin
     default:
       return undefined;
   }
+}
+
+/**
+ * Fallback color when a level has no palette override. We rotate
+ * standard bricks by row through the rainbow so the field reads as
+ * horizontal color stripes (classic arcade look) instead of one tone.
+ * Other archetypes keep their distinct archetype colors so they remain
+ * visually unambiguous (tough = orange, hard = purple, etc).
+ */
+function defaultRowColor(arche: BrickArchetype, rowIdx: number): number | undefined {
+  if (arche.kind !== 'standard') return undefined;
+  const palette = Tuning.bricks.rainbowRowColors;
+  return palette[rowIdx % palette.length];
 }
 
 /**
