@@ -62,7 +62,7 @@ export class InputSystem {
       this.pointerY = p.worldY;
       // Touch lift -> stop driving paddle; mouse release keeps pointer mode
       // until a key press takes over (handled in axisX()).
-      if (p.pointerType === 'touch') this.pointerActive = false;
+      if (p.wasTouch) this.pointerActive = false;
     });
   }
 
