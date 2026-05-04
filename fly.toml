@@ -1,29 +1,30 @@
-# Fly.io configuration for Brickstorm. Static site served by nginx.
-# Run `fly launch --copy-config --no-deploy` first to claim a unique app name,
-# then `fly deploy`.
+# fly.toml app configuration file generated for brickstorm on 2026-05-04T18:57:09Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
 
-app = "brickstorm"
-primary_region = "arn"
+app = 'brickstorm'
+primary_region = 'arn'
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = 'Dockerfile'
 
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "stop"
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
-  processes = ["app"]
+  processes = ['app']
 
   [[http_service.checks]]
-    grace_period = "5s"
-    interval = "15s"
-    method = "GET"
-    timeout = "2s"
-    path = "/healthz"
+    interval = '15s'
+    timeout = '2s'
+    grace_period = '5s'
+    method = 'GET'
+    path = '/healthz'
 
 [[vm]]
-  cpu_kind = "shared"
+  cpu_kind = 'shared'
   cpus = 1
   memory_mb = 256
