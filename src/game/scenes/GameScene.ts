@@ -431,10 +431,16 @@ export class GameScene extends Phaser.Scene {
     this.events.emit(Events.ScoreChanged, this.score.score, this.score.highScore, points);
     if (chain >= 3) this.events.emit(Events.Combo, chain);
 
-    // Award life threshold.
+    // Award life threshold. A single brick break can push score across
+    // multiple thresholds — emit one HUD update + 1UP cue per granted life
+    // so the player feels each one (issue #10).
     const li = this.score.awardLifeIfDue();
-    if (li.granted > 0) {
-      this.events.emit(Events.LivesChanged, this.score.livesLeft);
+    for (let i = 0; i < li.granted; i++) {
+      this.time.delayedCall(i * 280, () => {
+        this.events.emit(Events.LivesChanged, this.score.livesLeft);
+        this.events.emit(Events.PowerUpActivated, [{ kind: 'life', remaining: 0 }]);
+        getAudio().playSfx('powerupGet', 0.85);
+      });
     }
 
     // Drop chance.
