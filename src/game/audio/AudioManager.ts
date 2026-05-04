@@ -13,7 +13,8 @@ export type SfxKey =
   | 'levelComplete'
   | 'gameOver'
   | 'uiMove'
-  | 'uiSelect';
+  | 'uiSelect'
+  | 'heartbeat';
 
 export type MusicKey = 'menu' | 'game';
 
@@ -165,6 +166,7 @@ export class AudioManager {
       gameOver,
       uiMove,
       uiSelect,
+      heartbeat,
     ] = await Promise.all([
       renderToneAsync({ freq: 440, freqEnd: 660, durationMs: 70, type: 'square', volume: 0.35 }),
       renderToneAsync({ freq: 320, freqEnd: 280, durationMs: 50, type: 'square', volume: 0.25 }),
@@ -178,6 +180,7 @@ export class AudioManager {
       renderToneAsync({ freq: 420, freqEnd: 60, durationMs: 1100, type: 'sawtooth', volume: 0.55, filterFreq: 1500 }),
       renderToneAsync({ freq: 880, freqEnd: 880, durationMs: 30, type: 'square', volume: 0.18 }),
       renderToneAsync({ freq: 880, freqEnd: 1320, durationMs: 90, type: 'square', volume: 0.30 }),
+      renderToneAsync({ freq: 80, freqEnd: 50, durationMs: 180, type: 'sine', volume: 0.55, filterFreq: 220 }),
     ]);
 
     this.sfx.set('paddle', paddle);
@@ -192,6 +195,7 @@ export class AudioManager {
     this.sfx.set('gameOver', gameOver);
     this.sfx.set('uiMove', uiMove);
     this.sfx.set('uiSelect', uiSelect);
+    this.sfx.set('heartbeat', heartbeat);
 
     // Music — A minor pentatonic/arpeggio loops. Numbers are MIDI; 0 = rest.
     const menuLoop = await renderChiptuneLoopAsync({

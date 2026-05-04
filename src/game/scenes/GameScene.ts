@@ -64,6 +64,9 @@ export class GameScene extends Phaser.Scene {
   private debugGfx?: Phaser.GameObjects.Graphics;
   private hitstopRemainingMs = 0;
   private serveHint?: Phaser.GameObjects.Text;
+  private tensionActive = false;
+  private nextHeartbeatAt = 0;
+  private tensionVignette?: Phaser.GameObjects.Rectangle;
 
   constructor() {
     super(SceneKeys.Game);
@@ -156,6 +159,7 @@ export class GameScene extends Phaser.Scene {
     this.tickPowerups();
     this.tickProjectiles(time);
     this.tickActivePowerUps(delta);
+    this.tickTension(time);
     if (this.debug) this.drawDebug();
   }
 
@@ -179,6 +183,9 @@ export class GameScene extends Phaser.Scene {
     this.powerups = [];
     this.projectiles = [];
     this.active = [];
+    this.tensionActive = false;
+    this.tensionVignette?.destroy();
+    this.tensionVignette = undefined;
     this.paddle.resetWidth();
     this.paddle.setMode('normal');
     this.paddle.setSticky(false);
@@ -540,7 +547,51 @@ export class GameScene extends Phaser.Scene {
 
     if (brick.isBreakable()) {
       this.bricksRemaining = Math.max(0, this.bricksRemaining - 1);
+      this.updateTensionMode();
       if (this.bricksRemaining === 0) this.completeLevel();
+    }
+  }
+
+  private updateTensionMode(): void {
+    const shouldBeActive = this.bricksRemaining > 0 && this.bricksRemaining <= 3;
+    if (shouldBeActive === this.tensionActive) return;
+    this.tensionActive = shouldBeActive;
+    if (shouldBeActive) {
+      // Red vignette overlay.
+      this.tensionVignette = this.add
+        .rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0xff1844, 0)
+        .setDepth(180)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      this.tweens.add({
+        targets: this.tensionVignette,
+        fillAlpha: 0.12,
+        duration: 600,
+        yoyo: true,
+        repeat: -1,
+        ease: 'sine.inOut',
+      });
+      this.nextHeartbeatAt = this.time.now;
+    } else if (this.tensionVignette) {
+      this.tweens.killTweensOf(this.tensionVignette);
+      this.tweens.add({
+        targets: this.tensionVignette,
+        fillAlpha: 0,
+        duration: 320,
+        onComplete: () => {
+          this.tensionVignette?.destroy();
+          this.tensionVignette = undefined;
+        },
+      });
+    }
+  }
+
+  private tickTension(timeMs: number): void {
+    if (!this.tensionActive) return;
+    if (timeMs >= this.nextHeartbeatAt) {
+      getAudio().playSfx('heartbeat', 0.9);
+      // Heartbeat cadence accelerates as bricks dwindle.
+      const interval = this.bricksRemaining <= 1 ? 520 : this.bricksRemaining === 2 ? 660 : 800;
+      this.nextHeartbeatAt = timeMs + interval;
     }
   }
 
