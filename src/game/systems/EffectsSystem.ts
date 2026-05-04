@@ -84,17 +84,22 @@ export function spark(scene: Phaser.Scene, x: number, y: number, color: number, 
   scene.time.delayedCall(700, () => emitter.destroy());
 }
 
+export interface HitstopHost {
+  beginHitstop(ms: number): void;
+}
+
 /**
- * Brief pause-on-hit "hit-stop" by zeroing tween/time scale and freezing
- * physics. Uses real-time setTimeout to unfreeze (since we just slowed
- * scene.time itself).
+ * Brief pause-on-hit "hit-stop". The ball is driven manually (not by
+ * Arcade Physics) so pausing physics.world has no effect — instead we
+ * delegate to the scene, which gates its substep loop on a remaining-ms
+ * counter. Tweens are also frozen and restored via real-time setTimeout
+ * (since we just zeroed the tween clock).
  */
-export function hitstop(scene: Phaser.Scene): void {
+export function hitstop(scene: Phaser.Scene & Partial<HitstopHost>): void {
   const ms = Tuning.effects.hitstopMs;
-  scene.tweens.timeScale = 0.001;
-  scene.physics.world.isPaused = true;
+  if (typeof scene.beginHitstop === 'function') scene.beginHitstop(ms);
+  scene.tweens.timeScale = 0;
   window.setTimeout(() => {
     scene.tweens.timeScale = 1;
-    scene.physics.world.isPaused = false;
   }, ms);
 }

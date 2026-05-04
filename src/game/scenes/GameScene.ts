@@ -52,6 +52,7 @@ export class GameScene extends Phaser.Scene {
   private puSelector!: PowerUpSelector;
   private debug = false;
   private debugGfx?: Phaser.GameObjects.Graphics;
+  private hitstopRemainingMs = 0;
 
   constructor() {
     super(SceneKeys.Game);
@@ -129,12 +130,26 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     this.starfield?.update(delta);
+    if (this.hitstopRemainingMs > 0) {
+      // Hitstop: render but skip ball / power-up / projectile movement so
+      // the freeze-frame impact lands. Paddle still moves so input feels
+      // responsive coming out of the freeze.
+      this.hitstopRemainingMs -= delta;
+      this.handlePaddleInput(delta);
+      if (this.debug) this.drawDebug();
+      return;
+    }
     this.handlePaddleInput(delta);
     this.tickBalls(time, delta);
     this.tickPowerups();
     this.tickProjectiles(time);
     this.tickActivePowerUps(delta);
     if (this.debug) this.drawDebug();
+  }
+
+  /** Used by EffectsSystem.hitstop() to freeze ball motion briefly. */
+  beginHitstop(ms: number): void {
+    this.hitstopRemainingMs = Math.max(this.hitstopRemainingMs, ms);
   }
 
   // ---------- Level lifecycle ----------
