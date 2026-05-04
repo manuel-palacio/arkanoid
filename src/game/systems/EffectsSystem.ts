@@ -103,6 +103,57 @@ export function spark(scene: Phaser.Scene, x: number, y: number, color: number, 
   e.explode(count, x, y);
 }
 
+/** Expanding ring "shockwave" — used on brick destruction for satisfying juice. */
+export function shockwave(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  color: number,
+  maxRadius = 56,
+): void {
+  const ring = scene.add.graphics().setDepth(60);
+  ring.lineStyle(2.5, color, 1);
+  ring.strokeCircle(0, 0, 1);
+  ring.setPosition(x, y);
+  scene.tweens.add({
+    targets: ring,
+    scale: maxRadius,
+    alpha: 0,
+    duration: 260,
+    ease: 'Cubic.easeOut',
+    onComplete: () => ring.destroy(),
+  });
+}
+
+/** Floating "+points" text that drifts up and fades. */
+export function floatingPoints(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  text: string,
+  color = '#ffffff',
+  size = 14,
+): void {
+  const t = scene.add
+    .text(x, y, text, {
+      fontFamily: 'Inter, system-ui, sans-serif',
+      fontSize: `${size}px`,
+      color,
+      fontStyle: '700',
+    })
+    .setOrigin(0.5)
+    .setDepth(70)
+    .setShadow(0, 0, color, 8, true, true);
+  scene.tweens.add({
+    targets: t,
+    y: y - 36,
+    alpha: 0,
+    duration: 700,
+    ease: 'Quad.easeOut',
+    onComplete: () => t.destroy(),
+  });
+}
+
 export interface HitstopHost {
   beginHitstop(ms: number): void;
 }

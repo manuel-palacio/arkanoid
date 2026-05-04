@@ -14,7 +14,15 @@ import {
   paddleReflect,
   wallReflect,
 } from '../systems/CollisionSystem';
-import { drawStarfield, hitstop, shake, spark, type Starfield } from '../systems/EffectsSystem';
+import {
+  drawStarfield,
+  floatingPoints,
+  hitstop,
+  shake,
+  shockwave,
+  spark,
+  type Starfield,
+} from '../systems/EffectsSystem';
 import { InputSystem } from '../systems/InputSystem';
 import { buildLevel } from '../systems/LevelSystem';
 import { createPowerUpSelector, type PowerUpSelector } from '../systems/PowerUpSystem';
@@ -427,10 +435,19 @@ export class GameScene extends Phaser.Scene {
 
   private handleBrickDestroyed(brick: Brick, _ball: Ball): void {
     getAudio().playSfx('brickBreak');
-    spark(this, brick.x, brick.y, brick.archetype.color, 12);
+    spark(this, brick.x, brick.y, brick.archetype.color, 18);
+    shockwave(this, brick.x, brick.y, brick.archetype.color);
     shake(this, Tuning.effects.shakeBrickDurationMs, Tuning.effects.shakeBrickIntensity);
     hitstop(this);
     const { points, chain } = this.score.brickBroken(brick.archetype.score, this.time.now);
+    floatingPoints(
+      this,
+      brick.x,
+      brick.y - 6,
+      `+${points}`,
+      hexToCss(brick.archetype.color),
+      chain >= 3 ? 18 : 14,
+    );
     this.events.emit(Events.ScoreChanged, this.score.score, this.score.highScore, points);
     if (chain >= 3) this.events.emit(Events.Combo, chain);
 
@@ -790,4 +807,8 @@ export class GameScene extends Phaser.Scene {
       g.lineBetween(b.x, b.y, b.x + b.vx * 0.05, b.y + b.vy * 0.05);
     }
   }
+}
+
+function hexToCss(c: number): string {
+  return '#' + c.toString(16).padStart(6, '0');
 }
