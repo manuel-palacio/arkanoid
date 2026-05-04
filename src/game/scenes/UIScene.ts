@@ -4,6 +4,11 @@ import { Tuning } from '../config/tuning';
 import { POWERUPS } from '../data/powerUps';
 import type { ActivePowerUp, LevelDef, PowerUpKind } from '../types';
 
+type TimedKind = keyof typeof Tuning.powerups.durations;
+const TIMED_KINDS: ReadonlySet<PowerUpKind> = new Set(
+  Object.keys(Tuning.powerups.durations) as TimedKind[],
+);
+
 const HUD_H = Tuning.playfield.hudHeight;
 
 export class UIScene extends Phaser.Scene {
@@ -88,8 +93,12 @@ export class UIScene extends Phaser.Scene {
       const t = this.add
         .text(x + 8, 0, `${def.label}`, this.style(11, '#ffffff', '700'))
         .setOrigin(0, 0.5);
+      const total = TIMED_KINDS.has(a.kind)
+        ? Tuning.powerups.durations[a.kind as TimedKind]
+        : 0;
+      const fill = total > 0 ? Math.max(0, Math.min(1, a.remaining / total)) : 1;
       const bar = this.add
-        .rectangle(x + 4, 9, 76 * Math.max(0, Math.min(1, a.remaining / 18000)), 3, def.color, 1)
+        .rectangle(x + 4, 9, 76 * fill, 3, def.color, 1)
         .setOrigin(0, 0.5);
       this.powerStrip.add([bg, t, bar]);
     });
