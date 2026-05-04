@@ -67,4 +67,13 @@ describe('resetChain', () => {
     expect(r.chain).toBe(0);
     expect(r.score).toBe(1234);
   });
+
+  it('clears lastBreakAt so the next break starts at chain 1 immediately', () => {
+    const reset = resetChain({ ...initialScoreState(), chain: 5, lastBreakAt: 1000 });
+    // A brick break right after reset (well within chainResetMs) must NOT
+    // resume the prior chain.
+    const next = awardBrickBreak(reset, 100, 1100);
+    expect(next.chain).toBe(1);
+    expect(next.pointsAdded).toBe(100);
+  });
 });

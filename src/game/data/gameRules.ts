@@ -58,5 +58,8 @@ export function lifeAwardsAtScore(state: ScoreState): { extraLives: number; stat
 }
 
 export function resetChain(state: ScoreState): ScoreState {
-  return { ...state, chain: 0 };
+  // Clear the timestamp too so the next break starts a fresh chain at 1
+  // even if it happens within chainResetMs of the prior one (e.g. the
+  // player breaks a brick within 1.5s of losing a life).
+  return { ...state, chain: 0, lastBreakAt: -Infinity };
 }
