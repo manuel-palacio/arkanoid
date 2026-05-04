@@ -601,6 +601,7 @@ export class GameScene extends Phaser.Scene {
         removed.push(pu);
         continue;
       }
+      pu.update();
       // Collide with paddle (overlap rectangle test).
       if (
         pu.sprite.x > this.paddle.left &&
