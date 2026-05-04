@@ -13,15 +13,22 @@ export class Brick {
   alive = true;
   private cracksOverlay?: Phaser.GameObjects.Image;
 
-  constructor(scene: Phaser.Scene, x: number, y: number, archetype: BrickArchetype) {
+  /** Effective color (palette override or archetype default). */
+  readonly color: number;
+
+  constructor(scene: Phaser.Scene, x: number, y: number, archetype: BrickArchetype, colorOverride?: number) {
     this.archetype = archetype;
     this.hp = archetype.hits;
+    this.color = colorOverride ?? archetype.color;
     const sp = scene.physics.add.image(x, y, archetype.glyph ?? 'brick-standard');
     sp.setOrigin(0.5);
     sp.setImmovable(true);
     sp.body.allowGravity = false;
     sp.setDepth(10);
     sp.body.setSize(Tuning.bricks.width, Tuning.bricks.height, true);
+    if (colorOverride != null && archetype.kind !== 'indestructible') {
+      sp.setTint(colorOverride);
+    }
     this.sprite = sp;
   }
 
@@ -82,7 +89,12 @@ export class Brick {
   private flash(scene: Phaser.Scene, color: number): void {
     this.sprite.setTintFill(color);
     scene.time.delayedCall(Tuning.bricks.flashMs, () => {
-      if (this.alive) this.sprite.clearTint();
+      if (!this.alive) return;
+      if (this.color !== this.archetype.color) {
+        this.sprite.setTint(this.color);
+      } else {
+        this.sprite.clearTint();
+      }
     });
   }
 }

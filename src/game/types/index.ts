@@ -39,6 +39,13 @@ export interface PowerUpDef {
   positive: boolean;
 }
 
+export interface LevelPalette {
+  standard?: number;
+  tough?: number;
+  hard?: number;
+  special?: number;
+}
+
 export interface LevelDef {
   id: number;
   name: string;
@@ -48,8 +55,10 @@ export interface LevelDef {
   ballSpeedMul?: number;
   /** allowed power-up kinds; empty/undefined = all */
   allowedPowerUps?: PowerUpKind[];
+  /** per-level color overrides; falls back to archetype defaults */
+  palette?: LevelPalette;
   /**
-   * 17-column grid of strings; each row is one brick line from top to bottom.
+   * 13-column grid of strings; each row is one brick line from top to bottom.
    * Symbol legend (see data/brickTypes.ts):
    *   "."  empty
    *   "S"  standard (1-hit)

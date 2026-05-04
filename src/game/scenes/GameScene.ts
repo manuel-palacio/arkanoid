@@ -435,8 +435,8 @@ export class GameScene extends Phaser.Scene {
 
   private handleBrickDestroyed(brick: Brick, _ball: Ball): void {
     getAudio().playSfx('brickBreak');
-    spark(this, brick.x, brick.y, brick.archetype.color, 18);
-    shockwave(this, brick.x, brick.y, brick.archetype.color);
+    spark(this, brick.x, brick.y, brick.color, 18);
+    shockwave(this, brick.x, brick.y, brick.color);
     shake(this, Tuning.effects.shakeBrickDurationMs, Tuning.effects.shakeBrickIntensity);
     hitstop(this);
     const { points, chain } = this.score.brickBroken(brick.archetype.score, this.time.now);
@@ -445,7 +445,7 @@ export class GameScene extends Phaser.Scene {
       brick.x,
       brick.y - 6,
       `+${points}`,
-      hexToCss(brick.archetype.color),
+      hexToCss(brick.color),
       chain >= 3 ? 18 : 14,
     );
     this.events.emit(Events.ScoreChanged, this.score.score, this.score.highScore, points);

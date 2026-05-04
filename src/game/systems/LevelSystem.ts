@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { Tuning } from '../config/tuning';
 import { archetypeForSymbol } from '../data/brickTypes';
-import type { LevelDef } from '../types';
+import type { BrickArchetype, LevelDef } from '../types';
 import { Brick } from '../entities/Brick';
 
 export interface ParsedLevel {
@@ -35,13 +35,44 @@ export function buildLevel(scene: Phaser.Scene, def: LevelDef): ParsedLevel {
       if (!arche) continue;
       const x = ox + c * (bw + colGap) + bw / 2;
       const y = oy + r * (bh + rowGap) + bh / 2;
-      const brick = new Brick(scene, x, y, arche);
+      const colorOverride = paletteColorFor(def, arche);
+      const brick = new Brick(scene, x, y, arche, colorOverride);
       bricks.push(brick);
       if (brick.isBreakable()) breakable++;
+      // Subtle, staggered breathing pulse so the field feels alive.
+      // Indestructible bricks stay still — they're meant to feel inert.
+      if (arche.kind !== 'indestructible') {
+        scene.tweens.add({
+          targets: brick.sprite,
+          alpha: { from: 0.86, to: 1 },
+          duration: 1400 + (r * 53 + c * 31) % 600,
+          yoyo: true,
+          repeat: -1,
+          ease: 'sine.inOut',
+          delay: ((r * 7 + c * 11) % 9) * 60,
+        });
+      }
     }
   });
 
   return { bricks, breakableCount: breakable };
+}
+
+function paletteColorFor(def: LevelDef, arche: BrickArchetype): number | undefined {
+  const p = def.palette;
+  if (!p) return undefined;
+  switch (arche.kind) {
+    case 'standard':
+      return p.standard;
+    case 'tough':
+      return p.tough;
+    case 'hard':
+      return p.hard;
+    case 'special':
+      return p.special;
+    default:
+      return undefined;
+  }
 }
 
 /**
