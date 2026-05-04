@@ -49,16 +49,20 @@ export class InputSystem {
       this.fire('fire');
     });
     scene.input.on('pointermove', (p: Phaser.Input.Pointer) => {
-      if (p.isDown || p.event.type === 'pointermove') {
-        this.pointerActive = true;
-        this.pointerX = p.worldX;
-        this.pointerY = p.worldY;
-      }
-    });
-    scene.input.on('pointerup', (p: Phaser.Input.Pointer) => {
-      this.pointerActive = false;
+      // Always track the latest cursor position; only flip to pointer-mode
+      // when the cursor is actually over the canvas with a button held, or
+      // when the user has touched the screen. Hover alone must not hijack
+      // a keyboard player's paddle.
       this.pointerX = p.worldX;
       this.pointerY = p.worldY;
+      if (p.isDown) this.pointerActive = true;
+    });
+    scene.input.on('pointerup', (p: Phaser.Input.Pointer) => {
+      this.pointerX = p.worldX;
+      this.pointerY = p.worldY;
+      // Touch lift -> stop driving paddle; mouse release keeps pointer mode
+      // until a key press takes over (handled in axisX()).
+      if (p.pointerType === 'touch') this.pointerActive = false;
     });
   }
 
@@ -84,6 +88,8 @@ export class InputSystem {
     let v = 0;
     if (this.leftKey?.isDown || this.aKey?.isDown) v -= 1;
     if (this.rightKey?.isDown || this.dKey?.isDown) v += 1;
+    // Keyboard input takes priority over a stale pointer-active flag.
+    if (v !== 0) this.pointerActive = false;
     return v;
   }
 
