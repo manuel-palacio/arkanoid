@@ -2,6 +2,20 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- Force the browser to revalidate index.html on every load. Vite
+         hashes all referenced assets (index-XXXX.js / .css) so they
+         remain cacheable forever — but the HTML must not be cached or
+         it'll keep pointing at old hashes after a deploy. Especially
+         relevant for iOS Safari and PWA "Add to Home Screen" installs,
+         which are otherwise very aggressive about holding the shell. -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <!-- Build timestamp injected by Vite (see vite.config.ts). On
+         mobile, open Safari Web Inspector / Chrome remote DevTools and
+         read this tag (or the boot log line) to confirm which build is
+         actually running — useful for diagnosing cache issues. -->
+    <meta name="build-time" content="%VITE_BUILD_TIME%" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
