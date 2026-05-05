@@ -144,19 +144,35 @@ export const Tuning = {
     max: 6,
   },
 
-  // Anti-stall — keeps endgame fields lively when only a few bricks remain.
+  // Anti-stall — keeps the field lively whenever progress slows, NOT
+  // just at endgame. Three escalating tiers from gentle to active:
+  //   1. nudge       — rotate ball angle toward vertical
+  //   2. rescue drop — force-spawn a multi-ball power-up
+  //   3. speed assist— gently bump speed (still endgame-only)
   antiStall: {
     /** below this |vy/speed|, count toward "stuck" */
     verticalFractionThreshold: 0.3,
-    /** consecutive low-vy frames before nudging (~1.5 s @ 60 fps) */
-    stuckFramesTrigger: 90,
+    /** consecutive low-vy frames before nudging (~1.0 s @ 60 fps) */
+    stuckFramesTrigger: 60,
     /** degrees the velocity rotates toward vertical when nudged */
-    nudgeDeg: 12,
-    /** anti-stuck only engages when alive bricks ≤ this */
-    activateBelowBrickCount: 6,
+    nudgeDeg: 18,
+    /**
+     * Anti-stuck nudge waits for at least this much "no progress" time
+     * before considering a low-vy pattern as actually stuck. Prevents
+     * mid-play interruption when the player is breaking bricks but
+     * happens to have a transiently flat trajectory.
+     */
+    nudgeMinNoBreakMs: 2500,
+    /**
+     * Force-spawn a multi-ball power-up when the player has been
+     * scratching at the field for this long without a brick break.
+     * Drops from a random alive brick. Only fires while exactly one
+     * ball is in play and no power-up is already falling.
+     */
+    rescueDropAfterMs: 6000,
     /** ms since last brick break before applying gentle endgame speedup */
     speedAssistAfterMs: 8000,
-    /** alive bricks ≤ this triggers speed assist (and ≤ 3 also enables nudges) */
+    /** alive bricks ≤ this triggers speed assist */
     speedAssistBrickCount: 4,
     /** px/s nudge added each frame while speed assist is active */
     speedAssistPerFrame: 2,

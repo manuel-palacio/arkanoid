@@ -80,6 +80,8 @@ export class GameScene extends Phaser.Scene {
   private touchUi?: TouchControls;
   private antiStuck = new AntiStuckSystem();
   private timeSinceLastBrickDestroyed = 0;
+  /** Cooldown timer for rescue power-up drops — prevents spawn spam. */
+  private timeSinceLastRescue = Number.POSITIVE_INFINITY;
 
   private celebrateNearMiss(x: number): void {
     if (this.time.now > this.nearMissResetAt) {
@@ -291,6 +293,7 @@ export class GameScene extends Phaser.Scene {
     this.bricksRemaining = built.breakableCount;
     this.antiStuck.reset();
     this.timeSinceLastBrickDestroyed = 0;
+    this.timeSinceLastRescue = Number.POSITIVE_INFINITY;
     // Reset music to baseline tempo for the new field.
     getAudio().setMusicIntensity('normal');
 
@@ -460,6 +463,8 @@ export class GameScene extends Phaser.Scene {
     if (this.balls.length === 0) return;
     const dt = deltaMs / 1000;
     this.timeSinceLastBrickDestroyed += deltaMs;
+    this.timeSinceLastRescue += deltaMs;
+    this.maybeRescueDrop();
 
     for (const ball of this.balls) {
       if (ball.isAttached) {
@@ -514,10 +519,11 @@ export class GameScene extends Phaser.Scene {
         this.onBallLost(ball);
       }
 
-      // Late-game stall guard. Engages only when few bricks remain and
-      // the ball has settled into a near-horizontal pattern. Nudge feels
-      // intentional — ball flashes white + a soft wall sfx plays.
-      if (this.antiStuck.update(ball, this.bricksRemaining)) {
+      // Stall guard. Engages whenever the player has stopped breaking
+      // bricks for a few seconds AND the ball settles into a near-
+      // horizontal pattern — regardless of brick count. Nudge feels
+      // intentional: ball flashes white + a soft wall sfx plays.
+      if (this.antiStuck.update(ball, this.timeSinceLastBrickDestroyed)) {
         ball.onWallBounce(this);
         getAudio().playSfx('wall', 0.4);
       }
@@ -686,6 +692,38 @@ export class GameScene extends Phaser.Scene {
       this.updateMusicIntensity();
       if (this.bricksRemaining === 0) this.completeLevel();
     }
+  }
+
+  /**
+   * If the player has been stuck (no brick broken for several seconds)
+   * with a single ball in play, force-spawn a multi-ball power-up at a
+   * random alive brick. The cooldown stops the spawn from spamming —
+   * but if the player MISSES the drop, the no-break timer keeps growing
+   * and the next cooldown window will fire another rescue. The result:
+   * the game never gets to feel slow + tedious.
+   */
+  private maybeRescueDrop(): void {
+    const cfg = Tuning.antiStall;
+    if (this.balls.length !== 1) return;
+    if (this.bricksRemaining <= 0) return;
+    if (this.levelTransitioning || this.gameOver) return;
+    if (this.timeSinceLastBrickDestroyed < cfg.rescueDropAfterMs) return;
+    // Cooldown so a stalled run doesn't spawn 60 power-ups per second.
+    if (this.timeSinceLastRescue < 4500) return;
+    // Prefer not to flood the field — skip if there's already a falling
+    // power-up the player can grab.
+    if (this.powerups.some((p) => p.alive)) return;
+
+    const aliveBricks = this.bricks.filter((b) => b.alive && b.isBreakable());
+    if (aliveBricks.length === 0) return;
+    const target = aliveBricks[Math.floor(Math.random() * aliveBricks.length)];
+    if (!target) return;
+
+    const pu = new PowerUp(this, target.x, target.y, 'multi');
+    this.powerups.push(pu);
+    this.timeSinceLastRescue = 0;
+    getAudio().playSfx('powerupDrop', 0.8);
+    floatingPoints(this, target.x, target.y - 20, 'RESCUE  +MULTI', '#ffd600', 16);
   }
 
   /**

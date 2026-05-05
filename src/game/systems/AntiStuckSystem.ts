@@ -3,11 +3,18 @@ import { Tuning } from '../config/tuning';
 import type { Ball } from '../entities/Ball';
 
 /**
- * Late-game stall guard. Watches the active ball's vertical fraction and,
- * if it stays under `verticalFractionThreshold` for too many frames,
- * rotates the velocity toward vertical so the player isn't stuck watching
- * a near-horizontal crawl. Only engages when few bricks remain — the
- * mid-game still allows wide-arc plays.
+ * Stall guard. Watches the active ball's vertical fraction and rotates
+ * its velocity toward vertical when it has been near-horizontal for
+ * too long. Engages at any brick count — endless mid-game crawls feel
+ * just as tedious as endgame ones.
+ *
+ * Two-stage gate keeps it out of normal play:
+ *   1. The player must have failed to break a brick for at least
+ *      `nudgeMinNoBreakMs` (default 2.5 s). If they're making progress,
+ *      we never touch the ball.
+ *   2. The ball's |vy| / speed must stay under
+ *      `verticalFractionThreshold` for `stuckFramesTrigger` consecutive
+ *      frames (default 1 s of continuous near-horizontal motion).
  */
 export class AntiStuckSystem {
   private stuckFrames = 0;
@@ -16,13 +23,14 @@ export class AntiStuckSystem {
    * Per-frame tick. Returns true on the frame a nudge fired so the caller
    * can play visual + audio feedback.
    */
-  update(ball: Ball, brickCount: number): boolean {
+  update(ball: Ball, timeSinceLastBrickMs: number): boolean {
     const cfg = Tuning.antiStall;
-    if (brickCount > cfg.activateBelowBrickCount) {
+    if (ball.isAttached) {
       this.stuckFrames = 0;
       return false;
     }
-    if (ball.isAttached) {
+    // Stage 1 gate: only engage when the player isn't making progress.
+    if (timeSinceLastBrickMs < cfg.nudgeMinNoBreakMs) {
       this.stuckFrames = 0;
       return false;
     }
