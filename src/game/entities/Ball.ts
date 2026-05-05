@@ -312,4 +312,14 @@ export class Ball {
     this.prevX = this.x;
     this.prevY = this.y;
   }
+
+  /**
+   * Consecutive frames the ball has been overlapping a brick AABB.
+   * Driven by GameScene.tickBalls — purely diagnostic / safety net for
+   * the "ball trapped inside brick" failure mode (issue #36). With the
+   * swept-segment fix in place this should never exceed 1 in normal
+   * play; 3+ means something pathological happened and we should
+   * teleport the ball out.
+   */
+  framesInsideBrick = 0;
 }

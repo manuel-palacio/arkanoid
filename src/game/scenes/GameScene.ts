@@ -656,6 +656,11 @@ export class GameScene extends Phaser.Scene {
       // centroid of remaining breakable bricks while preserving speed.
       if (ball.inMagnetMode) this.applyMagnetPull(ball, dt);
 
+      // Stuck-in-brick safety net (issue #36). Should never fire in
+      // normal play with the swept-segment brickReflect; this is the
+      // nuclear escape hatch in case anything pathological slips through.
+      this.tickStuckInBrick(ball);
+
       // Stall guard. Engages whenever the player has stopped breaking
       // bricks for a few seconds AND the ball settles into a near-
       // horizontal pattern — regardless of brick count.
@@ -739,10 +744,13 @@ export class GameScene extends Phaser.Scene {
       if (ball.mode === 'ghost' && !brick.isBreakable()) {
         return false;
       }
-      // Reflect. Capture pre-reflection velocity so we can detect which
-      // axis flipped *after* writing the new velocity to the ball — the
-      // earlier code compared `r.vx !== ball.vx` after setVelocity, which
-      // was always false and silently skipped penetration resolution.
+      // Reflect. brickReflect now uses a swept-segment test against the
+      // brick AABB (expanded by ball radius) so high-speed tunneling
+      // can't fool the entry-side detection, AND returns the
+      // depenetration push (pushX/pushY) we apply to keep the ball
+      // fully outside the brick — without that, the next frame the
+      // ball is still overlapping and the same reflection re-fires,
+      // locking the ball inside (issue #36).
       const oldVx = ball.vx;
       const oldVy = ball.vy;
       const speed = ball.speed;
@@ -757,7 +765,11 @@ export class GameScene extends Phaser.Scene {
         brick.top,
         brick.right,
         brick.bottom,
+        ball.radius,
       );
+      if (r.pushX !== 0 || r.pushY !== 0) {
+        ball.setPosition(ball.x + r.pushX, ball.y + r.pushY);
+      }
       // Post-process to keep the ball off the horizontal-stall trajectory.
       const cleaned = ensureMinVertical(r.vx, r.vy, speed);
       // DEFLECTOR: force the outgoing direction to a 45° angle while
@@ -772,6 +784,7 @@ export class GameScene extends Phaser.Scene {
         outVx = sx * dSpeed * Math.SQRT1_2;
         outVy = sy * dSpeed * Math.SQRT1_2;
       }
+      ball.setVelocity(outVx, outVy);
       // BUMPER bricks: pinball-style speed boost on contact (+30%
       // capped by ball.maxSpeed via scaleSpeed). Awards a small flat
       // score per hit + a candy burst flash.
@@ -785,15 +798,6 @@ export class GameScene extends Phaser.Scene {
         );
         this.events.emit(Events.ScoreChanged, this.score.score, this.score.highScore, points);
         floatingPoints(this, brick.x, brick.y - 6, `+${points}`, '#ffdd00', 14);
-      }
-      // Resolve penetration along whichever axis actually flipped.
-      if (r.vx !== oldVx) {
-        if (r.vx > 0) ball.setPosition(brick.right + ball.radius, ball.y);
-        else ball.setPosition(brick.left - ball.radius, ball.y);
-      }
-      if (r.vy !== oldVy) {
-        if (r.vy > 0) ball.setPosition(ball.x, brick.bottom + ball.radius);
-        else ball.setPosition(ball.x, brick.top - ball.radius);
       }
       this.onBrickHit(brick, ball);
       return true;
@@ -1495,6 +1499,45 @@ export class GameScene extends Phaser.Scene {
       else if (a.kind === 'fast') mul *= Tuning.powerupEffects.fastScoreMul;
     }
     return mul;
+  }
+
+  /**
+   * Last-resort escape if a ball ends up overlapping any alive brick
+   * for several consecutive frames. With the swept-segment brickReflect
+   * + depenetration push this should never trigger, but the failure
+   * mode is severe (frozen ball, infinite particle effects), so we
+   * keep this nuclear option in. After the threshold, we kick the ball
+   * out vertically and flip vy so it heads away from whatever it was
+   * stuck in.
+   */
+  private tickStuckInBrick(ball: Ball): void {
+    let overlaps = false;
+    for (const b of this.bricks) {
+      if (!b.alive) continue;
+      if (
+        ball.x + ball.radius > b.left &&
+        ball.x - ball.radius < b.right &&
+        ball.y + ball.radius > b.top &&
+        ball.y - ball.radius < b.bottom
+      ) {
+        overlaps = true;
+        break;
+      }
+    }
+    if (!overlaps) {
+      ball.framesInsideBrick = 0;
+      return;
+    }
+    ball.framesInsideBrick += 1;
+    if (ball.framesInsideBrick >= 3) {
+      // Kick out: shove the ball vertically by 2× radius in whichever
+      // direction it was already heading, and flip vy so the next
+      // collision pass sees a fresh trajectory.
+      const dir = ball.vy >= 0 ? 1 : -1;
+      ball.setPosition(ball.x, ball.y + dir * ball.radius * 2);
+      ball.setVelocity(ball.vx, -ball.vy);
+      ball.framesInsideBrick = 0;
+    }
   }
 
   /**

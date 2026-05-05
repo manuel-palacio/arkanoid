@@ -24,9 +24,18 @@ export function paddleReflect(hitOffset: number, jitterDeg = 0): { x: number; y:
 }
 
 /**
- * Reflect against an axis-aligned brick AABB. We pick the side based on the
- * shallowest penetration, which is reliable for non-corner hits and fine for
- * arcade-quality on corners. Returns the new velocity.
+ * Reflect against an axis-aligned brick AABB. Uses a continuous swept
+ * segment test (prev → cur) against the brick's edges expanded by the
+ * ball radius — robust at high speeds where the ball can travel more
+ * than its own diameter in one frame and skip the prev/cur side test
+ * entirely. Falls back to a penetration-depth test if the ball started
+ * the frame already inside the expanded AABB (slow-motion / teleport).
+ *
+ * Returns the new velocity AND the depenetration push (`pushX`,
+ * `pushY`) the caller must apply to the ball position so it ends up
+ * fully outside the brick after this frame — without it, on the next
+ * frame the ball is still overlapping and the same reflection fires
+ * again, locking the ball into the brick (issue #36).
  */
 export function brickReflect(
   ballPrevX: number,
@@ -39,25 +48,84 @@ export function brickReflect(
   brickTop: number,
   brickRight: number,
   brickBottom: number,
-): { vx: number; vy: number } {
-  // Determine entry side from previous position.
-  const wasLeft = ballPrevX <= brickLeft;
-  const wasRight = ballPrevX >= brickRight;
-  const wasAbove = ballPrevY <= brickTop;
-  const wasBelow = ballPrevY >= brickBottom;
+  radius: number,
+): { vx: number; vy: number; pushX: number; pushY: number } {
+  // Brick AABB expanded by the ball radius — circle vs AABB collapses
+  // to point vs expanded AABB.
+  const left = brickLeft - radius;
+  const right = brickRight + radius;
+  const top = brickTop - radius;
+  const bottom = brickBottom + radius;
 
-  // Prefer axis based on previous side. If undecidable, fall back to penetration depths.
-  if ((wasLeft && vx > 0) || (wasRight && vx < 0)) {
-    return { vx: -vx, vy };
+  const dx = ballX - ballPrevX;
+  const dy = ballY - ballPrevY;
+
+  // Find the earliest slab entry within [0, 1].
+  let tMin = Number.POSITIVE_INFINITY;
+  let hitAxis: 'x' | 'y' = 'y';
+  let hitSign = 1;
+  if (Math.abs(dx) > 1e-9) {
+    const tL = (left - ballPrevX) / dx;
+    const tR = (right - ballPrevX) / dx;
+    if (tL >= 0 && tL <= 1 && tL < tMin) {
+      tMin = tL;
+      hitAxis = 'x';
+      hitSign = 1; // entered from the LEFT face
+    }
+    if (tR >= 0 && tR <= 1 && tR < tMin) {
+      tMin = tR;
+      hitAxis = 'x';
+      hitSign = -1; // entered from the RIGHT face
+    }
   }
-  if ((wasAbove && vy > 0) || (wasBelow && vy < 0)) {
-    return { vx, vy: -vy };
+  if (Math.abs(dy) > 1e-9) {
+    const tT = (top - ballPrevY) / dy;
+    const tB = (bottom - ballPrevY) / dy;
+    if (tT >= 0 && tT <= 1 && tT < tMin) {
+      tMin = tT;
+      hitAxis = 'y';
+      hitSign = 1; // entered from the TOP face
+    }
+    if (tB >= 0 && tB <= 1 && tB < tMin) {
+      tMin = tB;
+      hitAxis = 'y';
+      hitSign = -1; // entered from the BOTTOM face
+    }
   }
-  // Edge case: corner. Compute penetration along each axis at impact and pick larger.
-  const penX = Math.min(Math.abs(ballX - brickLeft), Math.abs(ballX - brickRight));
-  const penY = Math.min(Math.abs(ballY - brickTop), Math.abs(ballY - brickBottom));
-  if (penX < penY) return { vx: -vx, vy };
-  return { vx, vy: -vy };
+
+  let newVx = vx;
+  let newVy = vy;
+  let pushX = 0;
+  let pushY = 0;
+
+  if (tMin !== Number.POSITIVE_INFINITY) {
+    if (hitAxis === 'x') {
+      newVx = -vx;
+      // Push ball center to outside-of-face along the X axis.
+      pushX = (hitSign > 0 ? left : right) - ballX;
+    } else {
+      newVy = -vy;
+      pushY = (hitSign > 0 ? top : bottom) - ballY;
+    }
+    return { vx: newVx, vy: newVy, pushX, pushY };
+  }
+
+  // Fallback: ball started this frame already inside the expanded AABB
+  // (slow-motion, teleport, or stale prev). Use shallowest-penetration.
+  const penLeft = ballX - left;
+  const penRight = right - ballX;
+  const penTop = ballY - top;
+  const penBottom = bottom - ballY;
+  const minPenX = Math.min(penLeft, penRight);
+  const minPenY = Math.min(penTop, penBottom);
+  if (minPenX < minPenY) {
+    newVx = -vx;
+    pushX = penLeft < penRight ? -penLeft : penRight;
+  } else {
+    newVy = -vy;
+    pushY = penTop < penBottom ? -penTop : penBottom;
+  }
+  return { vx: newVx, vy: newVy, pushX, pushY };
 }
 
 /**

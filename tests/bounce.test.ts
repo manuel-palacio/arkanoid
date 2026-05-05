@@ -43,15 +43,37 @@ describe('paddleReflect', () => {
 });
 
 describe('brickReflect', () => {
+  // Ball radius for tests; the brick expands by this on each side for
+  // circle-vs-AABB collision.
+  const R = 8;
+
   it('flips vx when entering from left', () => {
-    const r = brickReflect(50, 100, 70, 100, 200, 0, 60, 90, 120, 110);
+    const r = brickReflect(50, 100, 70, 100, 200, 0, 60, 90, 120, 110, R);
     expect(r.vx).toBe(-200);
     expect(r.vy).toBe(0);
   });
   it('flips vy when entering from above', () => {
-    const r = brickReflect(80, 80, 80, 95, 0, 200, 60, 90, 120, 110);
+    const r = brickReflect(80, 80, 80, 95, 0, 200, 60, 90, 120, 110, R);
     expect(r.vy).toBe(-200);
     expect(r.vx).toBe(0);
+  });
+  it('returns a pushX that places ball just outside the left face on a left hit', () => {
+    const r = brickReflect(40, 100, 70, 100, 200, 0, 60, 90, 120, 110, R);
+    // After push, ball center sits at brickLeft - radius = 60 - 8 = 52.
+    expect(70 + r.pushX).toBeCloseTo(52, 5);
+  });
+  it('returns a pushY that places ball just above the top face on a top hit', () => {
+    const r = brickReflect(80, 70, 80, 95, 0, 200, 60, 90, 120, 110, R);
+    // Ball center should be at brickTop - radius = 90 - 8 = 82.
+    expect(95 + r.pushY).toBeCloseTo(82, 5);
+  });
+  it('falls back to shallow-penetration when ball started inside the brick', () => {
+    // Both prev and cur are inside the (expanded) brick — no segment crossing.
+    const r = brickReflect(80, 100, 80, 100, 0, 0, 60, 90, 120, 110, R);
+    // The ball is centered, so any axis is valid; but pushX or pushY
+    // should be non-zero (we depenetrate) and the velocity should be
+    // unchanged-or-flipped depending on which axis won.
+    expect(Math.abs(r.pushX) + Math.abs(r.pushY)).toBeGreaterThan(0);
   });
 });
 
