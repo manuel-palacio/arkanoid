@@ -43,6 +43,22 @@ export class InputSystem {
   private pointerDownX = 0;
   private pointerDownY = 0;
   private pointerDragDist = 0;
+  /**
+   * Identifier of the pointer currently driving the paddle. Phaser
+   * fires per-pointer events on multi-touch devices; without this
+   * we'd accept a second finger's pointerdown and corrupt the drag
+   * origin for the primary finger. -1 = no active drag.
+   */
+  private lockedPointerId = -1;
+  /**
+   * Timestamp (Phaser ms) of the last pointerup. Combined with
+   * MICRO_LIFT_WINDOW_MS this lets us detect when a fast swipe
+   * caused the finger to briefly lift and re-place — common on
+   * touchscreens during fast paddle swipes. We treat the next
+   * pointerdown as a continuation of the prior drag rather than
+   * a fresh one (no drag-origin reset).
+   */
+  private lastPointerUpTimeMs = -Infinity;
 
   /** Absolute pointer X at the moment touchstart fired. */
   private dragOriginPointerX = 0;
@@ -58,6 +74,14 @@ export class InputSystem {
   /** Drag distance under this counts as a tap. Bumped from 12 to 18 px
    *  to be more tolerant on small phone screens. */
   private static readonly TAP_THRESHOLD_PX = 18;
+  /**
+   * If a new pointerdown arrives within this many ms of the last
+   * pointerup, treat it as a micro-lift continuation rather than a
+   * fresh drag. Mobile browsers can fire spurious up/down pairs during
+   * fast swipes; without this, the paddle would reset its drag origin
+   * mid-swipe and visibly stutter.
+   */
+  private static readonly MICRO_LIFT_WINDOW_MS = 80;
 
   constructor(private scene: Phaser.Scene) {
     const kb = scene.input.keyboard;
@@ -76,14 +100,33 @@ export class InputSystem {
     }
 
     scene.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      if (p.wasTouch) this.hasSeenTouch = true;
+
+      // Multi-touch lock: if another finger is already driving the
+      // paddle, ignore secondary touches entirely. Without this, a
+      // second-finger touch (very common when gripping a phone) would
+      // reset dragOriginPointerX for the primary finger and cause the
+      // paddle to teleport.
+      if (this.lockedPointerId !== -1 && p.id !== this.lockedPointerId) return;
+
+      const isMicroLift =
+        scene.time.now - this.lastPointerUpTimeMs < InputSystem.MICRO_LIFT_WINDOW_MS;
+
+      this.lockedPointerId = p.id;
       this.pointerActive = true;
       this.pointerX = p.worldX;
       this.pointerY = p.worldY;
-      this.pointerDownX = p.worldX;
-      this.pointerDownY = p.worldY;
-      this.pointerDragDist = 0;
-      this.dragOriginPointerX = p.worldX;
-      if (p.wasTouch) this.hasSeenTouch = true;
+
+      if (!isMicroLift) {
+        // Fresh touch: rebuild drag origin and clear tap-distance tracker.
+        this.pointerDownX = p.worldX;
+        this.pointerDownY = p.worldY;
+        this.pointerDragDist = 0;
+        this.dragOriginPointerX = p.worldX;
+        // dragOriginPaddleX is set by the caller via beginDrag().
+      }
+      // Micro-lift continuation: keep dragOriginPointerX, dragOriginPaddleX,
+      // and pointerDragDist so the swipe carries through without a reset.
 
       // Desktop (mouse) keeps click-to-launch+fire. Touch defers until
       // pointerup so a quick drag doesn't auto-serve.
@@ -94,9 +137,15 @@ export class InputSystem {
     });
 
     scene.input.on('pointermove', (p: Phaser.Input.Pointer) => {
+      // Only the locked pointer drives the paddle.
+      if (this.lockedPointerId !== -1 && p.id !== this.lockedPointerId) return;
       this.pointerX = p.worldX;
       this.pointerY = p.worldY;
-      if (p.isDown) {
+      // Update unconditionally — DON'T gate on p.isDown. Some Android
+      // browsers deliver pointermove with isDown=false during fast
+      // swipes (a timing artifact); gating drops those frames and
+      // causes visible paddle lag/freeze.
+      if (this.lockedPointerId !== -1) {
         this.pointerActive = true;
         const dx = p.worldX - this.pointerDownX;
         const dy = p.worldY - this.pointerDownY;
@@ -106,16 +155,48 @@ export class InputSystem {
     });
 
     scene.input.on('pointerup', (p: Phaser.Input.Pointer) => {
+      if (p.id !== this.lockedPointerId) return;
       this.pointerX = p.worldX;
       this.pointerY = p.worldY;
+      this.lastPointerUpTimeMs = scene.time.now;
+      const lockedAtUp = this.lockedPointerId;
       if (p.wasTouch) {
         // Tap (no significant drag) -> launch + fire. Drag -> just lift.
         if (this.pointerDragDist < InputSystem.TAP_THRESHOLD_PX) {
           this.fire('launch');
           this.fire('fire');
         }
+        // Defer pointerActive=false by the micro-lift window so a fast
+        // up-then-down pair (mid-swipe artifact) doesn't freeze the
+        // paddle for ~16ms while the lift sits in limbo. If a fresh
+        // pointerdown arrives in the window, it re-locks and the
+        // delayed callback short-circuits.
+        scene.time.delayedCall(InputSystem.MICRO_LIFT_WINDOW_MS + 16, () => {
+          if (this.lockedPointerId === lockedAtUp) {
+            this.pointerActive = false;
+            this.lockedPointerId = -1;
+          }
+        });
+      } else {
+        // Mouse: immediate release.
         this.pointerActive = false;
+        this.lockedPointerId = -1;
       }
+    });
+
+    // pointercancel fires when the OS steals the touch (notification
+    // pull-down, incoming call, home-gesture, edge swipe). Without
+    // this handler the lockedPointerId would never reset and the
+    // paddle would be frozen until the page reloads.
+    scene.input.on('gameout', () => {
+      // Phaser fires 'gameout' on the input manager when the pointer
+      // leaves the game. We treat this as a soft pointer release.
+      this.pointerActive = false;
+    });
+    scene.input.on('pointercancel', (p: Phaser.Input.Pointer) => {
+      if (p.id !== this.lockedPointerId) return;
+      this.pointerActive = false;
+      this.lockedPointerId = -1;
     });
   }
 
@@ -136,12 +217,17 @@ export class InputSystem {
     this.listeners.get(action)?.forEach((fn) => fn());
   }
 
-  /** Per-frame poll: returns -1, 0, +1 for paddle direction. */
+  /**
+   * Per-frame poll: returns -1, 0, +1 for paddle direction. Keyboard
+   * and touch can coexist — GameScene gives keyboard priority by
+   * checking axisX() first and only falling back to paddleTargetX()
+   * when axisX() is 0. Killing pointerActive here would freeze a
+   * Bluetooth-keyboard user mid-touch on mobile.
+   */
   axisX(): number {
     let v = 0;
     if (this.leftKey?.isDown || this.aKey?.isDown) v -= 1;
     if (this.rightKey?.isDown || this.dKey?.isDown) v += 1;
-    if (v !== 0) this.pointerActive = false;
     return v;
   }
 
@@ -161,10 +247,28 @@ export class InputSystem {
 
   // ---------- relative-drag API ----------
 
-  /** Tells the input system where the paddle was when a drag began.
-   *  Required for relative-drag mode; safe to call on every pointerdown. */
+  /**
+   * Tells the input system where the paddle was when a drag began.
+   * Required for relative-drag mode; safe to call on every pointerdown.
+   * Skipped during a micro-lift continuation so the existing drag
+   * origin survives the brief lift+re-place.
+   */
   beginDrag(paddleX: number): void {
+    if (this.pointerActive) return;
     this.dragOriginPaddleX = paddleX;
+  }
+
+  /**
+   * Re-anchor the drag origin to the current finger position and a
+   * fresh paddle position. Called by GameScene every frame the paddle
+   * gets clamped to a wall — without this, dragging past a wall and
+   * back would feel "stuck" until the user retraced the over-shoot
+   * exactly. Re-anchoring makes the next finger movement respond
+   * immediately, in either direction.
+   */
+  rebaseDrag(paddleX: number): void {
+    this.dragOriginPaddleX = paddleX;
+    this.dragOriginPointerX = this.pointerX;
   }
 
   /** Per-frame absolute target X for the paddle. Returns null if there

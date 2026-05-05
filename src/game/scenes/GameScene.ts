@@ -517,6 +517,14 @@ export class GameScene extends Phaser.Scene {
         // + (current finger x - drag origin x). Absolute (mouse): target
         // = pointer x. Paddle.setX clamps to field bounds.
         this.paddle.setX(target, FIELD_LEFT, FIELD_RIGHT);
+        // If the paddle was clamped to a wall, re-anchor the drag
+        // origin so the next finger movement responds immediately.
+        // Without this, dragging the paddle past a wall and pulling
+        // back feels "stuck" — the paddle won't budge until the
+        // finger has retraced the over-shoot distance exactly.
+        if (Math.abs(this.paddle.x - target) > 0.5) {
+          this.input$.rebaseDrag(this.paddle.x);
+        }
       }
     }
 
