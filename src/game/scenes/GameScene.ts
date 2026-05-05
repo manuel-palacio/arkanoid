@@ -744,13 +744,45 @@ export class GameScene extends Phaser.Scene {
       if (ball.mode === 'ghost' && !brick.isBreakable()) {
         return false;
       }
-      // Reflect. brickReflect now uses a swept-segment test against the
-      // brick AABB (expanded by ball radius) so high-speed tunneling
-      // can't fool the entry-side detection, AND returns the
-      // depenetration push (pushX/pushY) we apply to keep the ball
-      // fully outside the brick — without that, the next frame the
-      // ball is still overlapping and the same reflection re-fires,
-      // locking the ball inside (issue #36).
+      // BUMPER bricks: pinball-style radial impulse outward from the
+      // brick center instead of an axis-aligned reflection. Prevents
+      // the "crawl along the side" loop on shallow grazing hits
+      // because the outgoing direction is always away from the brick
+      // center, never tangent to its face. Also feels more pinball.
+      if (brick.archetype.kind === 'bumper') {
+        const speed = ball.speed || Tuning.ball.baseSpeed;
+        const cdx = ball.x - brick.x;
+        const cdy = ball.y - brick.y;
+        const dist = Math.hypot(cdx, cdy) || 1;
+        const boosted = Math.min(speed * 1.3, Tuning.ball.maxSpeed);
+        const radial = ensureMinVertical(
+          (cdx / dist) * boosted,
+          (cdy / dist) * boosted,
+          boosted,
+        );
+        ball.setVelocity(radial.vx, radial.vy);
+        // Push ball clear of the brick along the outward direction.
+        ball.setPosition(
+          ball.x + (cdx / dist) * ball.radius * 2,
+          ball.y + (cdy / dist) * ball.radius * 2,
+        );
+        candyBurst(this, brick.x, brick.y, 0xffdd00);
+        const { points } = this.score.brickBroken(
+          brick.archetype.score,
+          this.time.now,
+          this.computeScoreMul(),
+        );
+        this.events.emit(Events.ScoreChanged, this.score.score, this.score.highScore, points);
+        floatingPoints(this, brick.x, brick.y - 6, `+${points}`, '#ffdd00', 14);
+        this.onBrickHit(brick, ball);
+        return true;
+      }
+
+      // Reflect. brickReflect uses a slab-method swept test against the
+      // brick AABB (expanded by ball radius) — entry axis is the LATER
+      // of the two near times so grazing hits resolve correctly. Returns
+      // the depenetration push so the ball ends fully outside, no
+      // re-overlap next frame.
       const oldVx = ball.vx;
       const oldVy = ball.vy;
       const speed = ball.speed;
@@ -785,20 +817,6 @@ export class GameScene extends Phaser.Scene {
         outVy = sy * dSpeed * Math.SQRT1_2;
       }
       ball.setVelocity(outVx, outVy);
-      // BUMPER bricks: pinball-style speed boost on contact (+30%
-      // capped by ball.maxSpeed via scaleSpeed). Awards a small flat
-      // score per hit + a candy burst flash.
-      if (brick.archetype.kind === 'bumper') {
-        ball.scaleSpeed(1.3);
-        candyBurst(this, brick.x, brick.y, 0xffdd00);
-        const { points } = this.score.brickBroken(
-          brick.archetype.score,
-          this.time.now,
-          this.computeScoreMul(),
-        );
-        this.events.emit(Events.ScoreChanged, this.score.score, this.score.highScore, points);
-        floatingPoints(this, brick.x, brick.y - 6, `+${points}`, '#ffdd00', 14);
-      }
       this.onBrickHit(brick, ball);
       return true;
     }

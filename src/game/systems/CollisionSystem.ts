@@ -60,58 +60,73 @@ export function brickReflect(
   const dx = ballX - ballPrevX;
   const dy = ballY - ballPrevY;
 
-  // Find the earliest slab entry within [0, 1].
-  let tMin = Number.POSITIVE_INFINITY;
-  let hitAxis: 'x' | 'y' = 'y';
-  let hitSign = 1;
+  // Slab method: per-axis compute the earliest (`tNear`) and latest
+  // (`tFar`) times the segment is inside the slab. The segment enters
+  // the AABB at max(txNear, tyNear) — the LATER of the two — and exits
+  // at min(txFar, tyFar). The axis whose tNear == entry is the entry
+  // axis. Picking the earliest crossing instead (as the prior version
+  // did) is wrong on grazing hits: the segment can cross the X slab
+  // before the Y slab while still being above the brick — entering on
+  // the Y axis, not the X.
+  let txNear: number;
+  let txFar: number;
   if (Math.abs(dx) > 1e-9) {
-    const tL = (left - ballPrevX) / dx;
-    const tR = (right - ballPrevX) / dx;
-    if (tL >= 0 && tL <= 1 && tL < tMin) {
-      tMin = tL;
-      hitAxis = 'x';
-      hitSign = 1; // entered from the LEFT face
-    }
-    if (tR >= 0 && tR <= 1 && tR < tMin) {
-      tMin = tR;
-      hitAxis = 'x';
-      hitSign = -1; // entered from the RIGHT face
+    const t1 = (left - ballPrevX) / dx;
+    const t2 = (right - ballPrevX) / dx;
+    txNear = Math.min(t1, t2);
+    txFar = Math.max(t1, t2);
+  } else {
+    // Stationary on X — already inside or always outside the X slab.
+    if (ballPrevX >= left && ballPrevX <= right) {
+      txNear = Number.NEGATIVE_INFINITY;
+      txFar = Number.POSITIVE_INFINITY;
+    } else {
+      txNear = Number.POSITIVE_INFINITY;
+      txFar = Number.NEGATIVE_INFINITY;
     }
   }
+  let tyNear: number;
+  let tyFar: number;
   if (Math.abs(dy) > 1e-9) {
-    const tT = (top - ballPrevY) / dy;
-    const tB = (bottom - ballPrevY) / dy;
-    if (tT >= 0 && tT <= 1 && tT < tMin) {
-      tMin = tT;
-      hitAxis = 'y';
-      hitSign = 1; // entered from the TOP face
-    }
-    if (tB >= 0 && tB <= 1 && tB < tMin) {
-      tMin = tB;
-      hitAxis = 'y';
-      hitSign = -1; // entered from the BOTTOM face
+    const t1 = (top - ballPrevY) / dy;
+    const t2 = (bottom - ballPrevY) / dy;
+    tyNear = Math.min(t1, t2);
+    tyFar = Math.max(t1, t2);
+  } else {
+    if (ballPrevY >= top && ballPrevY <= bottom) {
+      tyNear = Number.NEGATIVE_INFINITY;
+      tyFar = Number.POSITIVE_INFINITY;
+    } else {
+      tyNear = Number.POSITIVE_INFINITY;
+      tyFar = Number.NEGATIVE_INFINITY;
     }
   }
+  const entry = Math.max(txNear, tyNear);
+  const exitT = Math.min(txFar, tyFar);
 
   let newVx = vx;
   let newVy = vy;
   let pushX = 0;
   let pushY = 0;
 
-  if (tMin !== Number.POSITIVE_INFINITY) {
-    if (hitAxis === 'x') {
+  // Valid intersection: entry within [0, 1], entry <= exitT.
+  if (entry <= exitT && entry <= 1 && exitT >= 0) {
+    // Entry axis = whichever near is larger (tightest constraint).
+    if (txNear > tyNear) {
+      // X axis. dx>0 → entered from left face; dx<0 → right face.
       newVx = -vx;
-      // Push ball center to outside-of-face along the X axis.
-      pushX = (hitSign > 0 ? left : right) - ballX;
+      pushX = (dx > 0 ? left : right) - ballX;
     } else {
       newVy = -vy;
-      pushY = (hitSign > 0 ? top : bottom) - ballY;
+      pushY = (dy > 0 ? top : bottom) - ballY;
     }
     return { vx: newVx, vy: newVy, pushX, pushY };
   }
 
   // Fallback: ball started this frame already inside the expanded AABB
-  // (slow-motion, teleport, or stale prev). Use shallowest-penetration.
+  // (slow-motion, teleport, or stale prev). Use shallowest-penetration:
+  // the axis on which the ball is closest to a face is the axis it
+  // most likely just crossed, so reflect there and push it back out.
   const penLeft = ballX - left;
   const penRight = right - ballX;
   const penTop = ballY - top;
