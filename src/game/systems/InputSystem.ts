@@ -60,6 +60,15 @@ export class InputSystem {
    */
   private lastPointerUpTimeMs = -Infinity;
   /**
+   * Was the gesture that ended at lastPointerUpTimeMs an actual
+   * drag (>= TAP_THRESHOLD_PX of movement) rather than a tap?
+   * Micro-lift continuation only applies to real drags — without
+   * this gate, repeated LASER tap-fires at slightly different
+   * positions accumulate as paddle drift through the carried-over
+   * `dragOriginPointerX`.
+   */
+  private lastUpWasDrag = false;
+  /**
    * Set true by the pointerdown handler when the touch is a micro-lift
    * continuation. Consumed by beginDrag() so a continuation doesn't
    * overwrite the in-flight drag origin (which would jump the paddle).
@@ -117,6 +126,7 @@ export class InputSystem {
       if (this.lockedPointerId !== -1 && p.id !== this.lockedPointerId) return;
 
       const isMicroLift =
+        this.lastUpWasDrag &&
         scene.time.now - this.lastPointerUpTimeMs < InputSystem.MICRO_LIFT_WINDOW_MS;
       // GameScene's own pointerdown listener fires AFTER this one and
       // calls beginDrag(paddle.x). When this is a continuation, we
@@ -172,6 +182,7 @@ export class InputSystem {
       this.pointerX = p.worldX;
       this.pointerY = p.worldY;
       this.lastPointerUpTimeMs = scene.time.now;
+      this.lastUpWasDrag = this.pointerDragDist >= InputSystem.TAP_THRESHOLD_PX;
       const lockedAtUp = this.lockedPointerId;
       if (p.wasTouch) {
         // Tap (no significant drag) -> launch + fire. Drag -> just lift.
