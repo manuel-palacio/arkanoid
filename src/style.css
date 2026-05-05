@@ -241,6 +241,64 @@ kbd {
 }
 
 /* =============================================================
+   "NEW VERSION AVAILABLE" BANNER
+   Shown by VersionPoller after a new deploy is detected on a
+   long-lived tab. Pinned to bottom-center, respects safe-area.
+   ============================================================= */
+#update-banner {
+  position: fixed;
+  bottom: max(env(safe-area-inset-bottom), 16px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px 8px 16px;
+  background: rgba(15, 24, 42, 0.95);
+  border: 1px solid rgba(74, 214, 255, 0.5);
+  border-radius: 999px;
+  color: #e7f0ff;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: banner-in 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+}
+#update-banner[hidden] { display: none; }
+@keyframes banner-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(12px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+#update-banner .update-text { letter-spacing: 0.2px; }
+#update-btn {
+  padding: 5px 14px;
+  background: #4ad6ff;
+  color: #05060d;
+  border: none;
+  border-radius: 999px;
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+}
+#update-btn:hover { background: #6ce0ff; }
+#update-dismiss {
+  background: transparent;
+  border: none;
+  color: #8aa0b8;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px 6px;
+  line-height: 1;
+}
+#update-dismiss:hover { color: #e7f0ff; }
+
+/* =============================================================
    ROTATE PROMPT (mobile landscape only — desktops never trigger)
    ============================================================= */
 #rotate-prompt {

@@ -46,6 +46,16 @@
       <div class="rotate-icon">⟳</div>
       <div class="rotate-msg">ROTATE TO PORTRAIT</div>
     </div>
+
+    <!-- "New version available" banner — toggled by VersionPoller when
+         /version.json reports a different hash than the running bundle.
+         Hidden by default; shown after detection. -->
+    <div id="update-banner" role="status" aria-live="polite" hidden>
+      <span class="update-text">🎮 New version available</span>
+      <button id="update-btn" type="button">Refresh</button>
+      <button id="update-dismiss" type="button" aria-label="Dismiss">✕</button>
+    </div>
+
     <noscript>This game requires JavaScript.</noscript>
     <script type="module" src="/src/main.ts"></script>
   </body>

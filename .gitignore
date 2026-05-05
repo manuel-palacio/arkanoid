@@ -7,3 +7,8 @@ dist
 .vscode
 coverage
 tsconfig.tsbuildinfo
+
+# Generated at build time by vite.config.ts (contains the current git
+# short SHA + build timestamp). Should reflect the commit it's built
+# against rather than being tracked.
+public/version.json
