@@ -59,6 +59,13 @@ export class InputSystem {
    * a fresh one (no drag-origin reset).
    */
   private lastPointerUpTimeMs = -Infinity;
+  /**
+   * Set true by the pointerdown handler when the touch is a micro-lift
+   * continuation. Consumed by beginDrag() so a continuation doesn't
+   * overwrite the in-flight drag origin (which would jump the paddle).
+   * Reset after every beginDrag call so a fresh tap behaves normally.
+   */
+  private skipNextBeginDrag = false;
 
   /** Absolute pointer X at the moment touchstart fired. */
   private dragOriginPointerX = 0;
@@ -111,6 +118,12 @@ export class InputSystem {
 
       const isMicroLift =
         scene.time.now - this.lastPointerUpTimeMs < InputSystem.MICRO_LIFT_WINDOW_MS;
+      // GameScene's own pointerdown listener fires AFTER this one and
+      // calls beginDrag(paddle.x). When this is a continuation, we
+      // need beginDrag to skip its origin-update — otherwise the
+      // paddle would jump. The next call to beginDrag consumes this
+      // flag.
+      this.skipNextBeginDrag = isMicroLift;
 
       this.lockedPointerId = p.id;
       this.pointerActive = true;
@@ -250,11 +263,14 @@ export class InputSystem {
   /**
    * Tells the input system where the paddle was when a drag began.
    * Required for relative-drag mode; safe to call on every pointerdown.
-   * Skipped during a micro-lift continuation so the existing drag
-   * origin survives the brief lift+re-place.
+   * During a micro-lift continuation the in-flight origin is preserved
+   * (otherwise the paddle would jump on the re-touch).
    */
   beginDrag(paddleX: number): void {
-    if (this.pointerActive) return;
+    if (this.skipNextBeginDrag) {
+      this.skipNextBeginDrag = false;
+      return;
+    }
     this.dragOriginPaddleX = paddleX;
   }
 
