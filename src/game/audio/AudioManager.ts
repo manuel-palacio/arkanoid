@@ -84,6 +84,11 @@ export class AudioManager {
   private muted = false;
   private musicVol = 0.5;
   private sfxVol = 0.85;
+  /** Music-on/off toggle, separate from master mute. Off by default. */
+  private musicEnabled = false;
+  /** Last music key requested by a scene — used to start playback when the
+   *  user toggles music on mid-session. */
+  private requestedMusicKey: MusicKey | null = null;
   private ready = false;
   private readyPromise: Promise<void> | null = null;
   private activePlays = new Map<SfxKey, number>();
@@ -134,6 +139,28 @@ export class AudioManager {
     } catch {
       /* ignore */
     }
+  }
+
+  /**
+   * Toggle music playback. SFX is unaffected. When turning on while a
+   * scene has previously requested a track (via fadeInMusic), the
+   * track resumes; when turning off, the current track fades out
+   * but the requested key is preserved so re-enabling brings it
+   * straight back.
+   */
+  setMusicEnabled(on: boolean): void {
+    if (on === this.musicEnabled) return;
+    this.musicEnabled = on;
+    if (on) {
+      const key = this.requestedMusicKey;
+      if (key && this.ready) this.beginPlayback(key, 600);
+    } else if (this.currentMusic) {
+      this.fadeAndStop(800);
+    }
+  }
+
+  isMusicEnabled(): boolean {
+    return this.musicEnabled;
   }
 
   setMusicVolume(v: number): void {
@@ -200,7 +227,9 @@ export class AudioManager {
   }
 
   playMusic(key: MusicKey): void {
+    this.requestedMusicKey = key;
     if (!this.ready) return;
+    if (!this.musicEnabled) return;
     if (this.currentMusic?.key === key) return;
     this.stopMusic();
     const howl = this.musicHowls.get(key);
@@ -216,6 +245,7 @@ export class AudioManager {
   }
 
   stopMusic(): void {
+    this.requestedMusicKey = null;
     if (!this.currentMusic) return;
     try {
       const howl = this.musicHowls.get(this.currentMusic.key);
@@ -229,9 +259,47 @@ export class AudioManager {
   /**
    * Smooth fade-out. Doesn't unload anything — just ramps the active music
    * down to silence and stops it after the fade. Cheaper than a hard
-   * `stopMusic` when transitioning between scenes.
+   * `stopMusic` when transitioning between scenes. Clears the requested
+   * track too — a fresh fadeInMusic call must come from the next scene.
    */
   fadeOutMusic(durationMs = 800): void {
+    this.requestedMusicKey = null;
+    this.fadeAndStop(durationMs);
+  }
+
+  /**
+   * Smooth fade-in. Replaces any currently playing track with a brief
+   * 200ms fade-out before fading the new track in over `durationMs`.
+   * Records the request so the next setMusicEnabled(true) can resume.
+   */
+  fadeInMusic(key: MusicKey, durationMs = 800): void {
+    this.requestedMusicKey = key;
+    if (!this.ready) return;
+    if (!this.musicEnabled) return;
+    if (this.currentMusic?.key === key) return;
+    this.beginPlayback(key, durationMs);
+  }
+
+  /** Internal helper: stop+fade-in a key while music is enabled. */
+  private beginPlayback(key: MusicKey, durationMs: number): void {
+    if (this.currentMusic) this.fadeAndStop(200);
+    const howl = this.musicHowls.get(key);
+    if (!howl) return;
+    try {
+      const id = howl.play();
+      howl.volume(0, id);
+      howl.rate(1, id);
+      const target = MUSIC_BASE_VOLUME * this.musicVol;
+      howl.fade(0, target, durationMs, id);
+      this.currentMusic = { key, id, intensity: 'normal' };
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /** Internal: fade out + stop the active track without clearing the
+   *  requested key (so a later setMusicEnabled(true) can resume). */
+  private fadeAndStop(durationMs: number): void {
     if (!this.currentMusic) return;
     const { key, id } = this.currentMusic;
     const howl = this.musicHowls.get(key);
@@ -250,29 +318,6 @@ export class AudioManager {
         }
       }, durationMs + 50);
       this.currentMusic = null;
-    } catch {
-      /* ignore */
-    }
-  }
-
-  /**
-   * Smooth fade-in. Replaces any currently playing track with a brief
-   * 200ms fade-out before fading the new track in over `durationMs`.
-   * Safe to call repeatedly — same-key calls are no-ops.
-   */
-  fadeInMusic(key: MusicKey, durationMs = 800): void {
-    if (!this.ready) return;
-    if (this.currentMusic?.key === key) return;
-    if (this.currentMusic) this.fadeOutMusic(200);
-    const howl = this.musicHowls.get(key);
-    if (!howl) return;
-    try {
-      const id = howl.play();
-      howl.volume(0, id);
-      howl.rate(1, id);
-      const target = MUSIC_BASE_VOLUME * this.musicVol;
-      howl.fade(0, target, durationMs, id);
-      this.currentMusic = { key, id, intensity: 'normal' };
     } catch {
       /* ignore */
     }

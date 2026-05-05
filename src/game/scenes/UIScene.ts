@@ -4,6 +4,7 @@ import { Tuning } from '../config/tuning';
 import { POWERUPS } from '../data/powerUps';
 import { comboFlash } from '../systems/EffectsSystem';
 import { getAudio } from '../audio/AudioManager';
+import { saveMusicEnabled } from '../AppGame';
 import type { ActivePowerUp, LevelDef, PowerUpKind } from '../types';
 
 type TimedKind = keyof typeof Tuning.powerups.durations;
@@ -21,6 +22,7 @@ export class UIScene extends Phaser.Scene {
   private powerStrip!: Phaser.GameObjects.Container;
   private floatingPoints: Phaser.GameObjects.Text[] = [];
   private muteIcon!: Phaser.GameObjects.Text;
+  private musicIcon!: Phaser.GameObjects.Text;
 
   constructor() {
     super(SceneKeys.UI);
@@ -45,16 +47,28 @@ export class UIScene extends Phaser.Scene {
     this.levelText = this.add
       .text(GAME_WIDTH / 2, row1Y, 'LV 1', this.style(15, '#9bf2ff', '700'))
       .setOrigin(0.5);
+    // Lives moves left to make room for the third button (music toggle).
     this.livesText = this.add
-      .text(GAME_WIDTH - 96, row1Y, '♥ ♥ ♥', this.style(16, '#ff5d6c'))
+      .text(GAME_WIDTH - 132, row1Y, '♥ ♥ ♥', this.style(16, '#ff5d6c'))
       .setOrigin(0.5);
 
     // Row 2 — active power-up strip (below stats).
     this.powerStrip = this.add.container(12, row2Y + 4);
 
-    // On-screen Pause + Mute buttons (top-right corner). Visible bg is
-    // 28x28 but the tappable hit area is 44x44 (Apple/Google touch target
-    // minimum). Positioned so neither overflows past the right edge.
+    // On-screen Music / Mute / Pause buttons (top-right corner). Visible
+    // bg is 28x28 but the tappable hit area is 44x44 (Apple/Google touch
+    // target minimum). Music is the leftmost so it's the easiest reach
+    // for thumbs already moving in from the right edge.
+    const musicBtn = this.makeIconButton(GAME_WIDTH - 90, row1Y, '🎵', () => {
+      const on = !this.registry.get(RegistryKeys.MusicEnabled);
+      this.registry.set(RegistryKeys.MusicEnabled, on);
+      saveMusicEnabled(on);
+      getAudio().setMusicEnabled(on);
+      this.refreshMusicIcon(on);
+    });
+    this.musicIcon = musicBtn.list[1] as Phaser.GameObjects.Text;
+    this.refreshMusicIcon(!!this.registry.get(RegistryKeys.MusicEnabled));
+
     const muteBtn = this.makeIconButton(GAME_WIDTH - 56, row1Y, '🔊', () => {
       const m = !this.registry.get(RegistryKeys.Muted);
       this.registry.set(RegistryKeys.Muted, m);
@@ -142,6 +156,13 @@ export class UIScene extends Phaser.Scene {
         .setOrigin(0, 0.5);
       this.powerStrip.add([bg, t, bar]);
     });
+  }
+
+  /** Update the music button glyph + alpha to reflect the current state. */
+  private refreshMusicIcon(on: boolean): void {
+    if (!this.musicIcon) return;
+    this.musicIcon.setText('🎵');
+    this.musicIcon.setAlpha(on ? 1 : 0.4);
   }
 
   private spawnFloater(text: string, color: string = '#ffffff', size = 14): void {

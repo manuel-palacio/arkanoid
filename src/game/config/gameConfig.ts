@@ -22,7 +22,10 @@ export const RegistryKeys = {
   LevelIndex: 'levelIndex',
   MusicVolume: 'musicVolume',
   SfxVolume: 'sfxVolume',
+  /** Master audio mute (silences everything). */
   Muted: 'muted',
+  /** Music-only toggle (SFX still play when this is false). Off by default. */
+  MusicEnabled: 'musicEnabled',
   Debug: 'debug',
 } as const;
 

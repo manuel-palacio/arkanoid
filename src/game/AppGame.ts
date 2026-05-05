@@ -38,6 +38,11 @@ export function createGame(opts: AppGameOptions): Phaser.Game {
   game.registry.set(RegistryKeys.MusicVolume, Tuning.audio.musicDefault);
   game.registry.set(RegistryKeys.SfxVolume, Tuning.audio.sfxDefault);
   game.registry.set(RegistryKeys.Muted, false);
+  // Music starts OFF — each player has to opt in via the toggle button.
+  // Last choice persists across sessions via localStorage.
+  const musicOn = loadMusicEnabled();
+  game.registry.set(RegistryKeys.MusicEnabled, musicOn);
+  getAudio().setMusicEnabled(musicOn);
   game.registry.set(RegistryKeys.Debug, !!opts.debug);
   game.registry.set(RegistryKeys.HighScore, loadHighScore());
 
@@ -100,6 +105,23 @@ function loadHighScore(): number {
 export function saveHighScore(value: number): void {
   try {
     localStorage.setItem('brickstorm.highscore', String(Math.max(0, value | 0)));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Music defaults to OFF. localStorage value '1' overrides to ON. */
+function loadMusicEnabled(): boolean {
+  try {
+    return localStorage.getItem('brickstorm.musicEnabled') === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function saveMusicEnabled(on: boolean): void {
+  try {
+    localStorage.setItem('brickstorm.musicEnabled', on ? '1' : '0');
   } catch {
     /* ignore */
   }
