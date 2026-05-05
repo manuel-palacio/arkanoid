@@ -16,6 +16,7 @@ import {
 } from '../systems/CollisionSystem';
 import {
   candyBurst,
+  comboFlash,
   drawSideGlow,
   drawStarfield,
   fireworks,
@@ -82,6 +83,8 @@ export class GameScene extends Phaser.Scene {
   private timeSinceLastBrickDestroyed = 0;
   /** Cooldown timer for rescue power-up drops — prevents spawn spam. */
   private timeSinceLastRescue = Number.POSITIVE_INFINITY;
+  /** BOMB power-up: next brick hit detonates a 3×3 area. */
+  private bombArmed = false;
 
   private celebrateNearMiss(x: number): void {
     if (this.time.now > this.nearMissResetAt) {
@@ -287,6 +290,7 @@ export class GameScene extends Phaser.Scene {
     this.paddle.resetWidth();
     this.paddle.setMode('normal');
     this.paddle.setSticky(false);
+    this.paddle.setGhostShield(false);
 
     const built = buildLevel(this, def);
     this.bricks = built.bricks;
@@ -294,6 +298,7 @@ export class GameScene extends Phaser.Scene {
     this.antiStuck.reset();
     this.timeSinceLastBrickDestroyed = 0;
     this.timeSinceLastRescue = Number.POSITIVE_INFINITY;
+    this.bombArmed = false;
     // Reset music to baseline tempo for the new field.
     getAudio().setMusicIntensity('normal');
 
@@ -514,10 +519,23 @@ export class GameScene extends Phaser.Scene {
         getAudio().playSfx('wall', 0.5);
       }
 
-      // Floor — life lost.
+      // Floor — life lost (or saved by GHOST shield).
       if (ball.y - ball.radius > Tuning.playfield.floorY) {
-        this.onBallLost(ball);
+        if (this.paddle.hasGhostShield()) {
+          this.paddle.consumeGhostShield();
+          ball.setVelocity(ball.vx, -Math.abs(ball.vy || Tuning.ball.baseSpeed));
+          ball.setPosition(ball.x, this.paddle.top - ball.radius - 1);
+          floatingPoints(this, ball.x, ball.y - 30, 'GHOST SAVE', '#99ffee', 18);
+          getAudio().playSfx('paddle', 0.9);
+          this.events.emit(Events.PowerUpExpired, 'ghost');
+        } else {
+          this.onBallLost(ball);
+        }
       }
+
+      // MAGNET pull (per-ball, per-frame). Tugs velocity toward the
+      // centroid of remaining breakable bricks while preserving speed.
+      if (ball.inMagnetMode) this.applyMagnetPull(ball, dt);
 
       // Stall guard. Engages whenever the player has stopped breaking
       // bricks for a few seconds AND the ball settles into a near-
@@ -591,6 +609,15 @@ export class GameScene extends Phaser.Scene {
       ) {
         continue;
       }
+      // SMASH (through-mode): pass through breakable bricks without
+      // reflecting. Indestructibles still bounce so the ball can never
+      // exit the playfield. We `return true` so the substep stops and
+      // the next substep advances forward — multi-hit bricks take
+      // damage on each substep until they die.
+      if (ball.inThroughMode && brick.isBreakable()) {
+        this.onBrickHit(brick, ball);
+        return true;
+      }
       // Reflect. Capture pre-reflection velocity so we can detect which
       // axis flipped *after* writing the new velocity to the ball — the
       // earlier code compared `r.vx !== ball.vx` after setVelocity, which
@@ -630,6 +657,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   private onBrickHit(brick: Brick, ball: Ball): void {
+    // BOMB: arm consumed on first contact with a breakable brick. Damages
+    // every brick in a 3×3 grid centered on the hit, then resolves the
+    // hit normally so the source brick still goes down.
+    if (this.bombArmed && brick.isBreakable()) {
+      this.bombArmed = false;
+      this.detonateBomb(brick, ball);
+      return;
+    }
     const result = brick.hit(this);
     if (result.destroyed) {
       this.handleBrickDestroyed(brick, ball);
@@ -638,13 +673,50 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * BOMB detonation. Hits every alive brick within 1 grid cell of the
+   * source. Multi-hit bricks take 1 damage; single-hit bricks die. The
+   * source brick goes down via its own hit() call (so its destruction
+   * effects + scoring fire normally).
+   */
+  private detonateBomb(source: Brick, ball: Ball): void {
+    const cellW = Tuning.bricks.width + Tuning.bricks.colGap;
+    const cellH = Tuning.bricks.height + Tuning.bricks.rowGap;
+    const radius = Tuning.powerupEffects.bombGridRadius;
+    candyBurst(this, source.x, source.y, 0xff5500);
+    shake(this, 180, 0.012);
+    comboFlash(this, 0xff5500, 0.25);
+    getAudio().playSfx('brickBreak');
+    haptic.bump();
+    const victims: Brick[] = [];
+    for (const b of this.bricks) {
+      if (!b.alive) continue;
+      if (b === source) continue;
+      const dx = Math.abs(b.x - source.x) / cellW;
+      const dy = Math.abs(b.y - source.y) / cellH;
+      if (dx <= radius + 0.4 && dy <= radius + 0.4) victims.push(b);
+    }
+    for (const v of victims) {
+      const r = v.hit(this);
+      if (r.destroyed) this.handleBrickDestroyed(v, ball);
+    }
+    // Resolve the source brick last so the chain feels like an outward
+    // wave from the impact point.
+    const r = source.hit(this);
+    if (r.destroyed) this.handleBrickDestroyed(source, ball);
+  }
+
   private handleBrickDestroyed(brick: Brick, _ball: Ball): void {
     getAudio().playSfx('brickBreak');
     haptic.bump();
     candyBurst(this, brick.x, brick.y, brick.color);
     shake(this, Tuning.effects.shakeBrickDurationMs, Tuning.effects.shakeBrickIntensity);
     hitstop(this);
-    const { points, chain } = this.score.brickBroken(brick.archetype.score, this.time.now);
+    const { points, chain } = this.score.brickBroken(
+      brick.archetype.score,
+      this.time.now,
+      this.computeScoreMul(),
+    );
     floatingPoints(
       this,
       brick.x,
@@ -823,6 +895,8 @@ export class GameScene extends Phaser.Scene {
     this.paddle.resetWidth();
     this.paddle.setMode('normal');
     this.paddle.setSticky(false);
+    this.paddle.setGhostShield(false);
+    this.bombArmed = false;
     this.active = [];
     this.events.emit(Events.PowerUpExpired, null);
     this.spawnBallOnPaddle();
@@ -995,6 +1069,43 @@ export class GameScene extends Phaser.Scene {
         this.paddle.setMode('laser');
         this.startTimed(kind, Tuning.powerups.durations.laser);
         break;
+      case 'fast':
+        // TURBO: cancels SLOW. Speed bumped up; restored on expire.
+        this.active = this.active.filter((a) => a.kind !== 'slow');
+        this.balls.forEach((b) => {
+          b.scaleSpeed(Tuning.powerupEffects.fastSpeedMul);
+          b.setFastMode(true);
+        });
+        this.startTimed(kind, Tuning.powerups.durations.fast);
+        break;
+      case 'through':
+        this.balls.forEach((b) => b.setThroughMode(true));
+        this.startTimed(kind, Tuning.powerups.durations.through);
+        break;
+      case 'big':
+        this.balls.forEach((b) => b.setBigMode(true));
+        this.startTimed(kind, Tuning.powerups.durations.big);
+        break;
+      case 'magnet':
+        this.balls.forEach((b) => b.setMagnetMode(true));
+        this.startTimed(kind, Tuning.powerups.durations.magnet);
+        break;
+      case 'bomb':
+        this.bombArmed = true;
+        floatingPoints(this, this.paddle.x, this.paddle.y - 30, 'BOMB ARMED', '#ff5500', 18);
+        break;
+      case 'gravity':
+        this.applyGravityShift();
+        floatingPoints(this, GAME_WIDTH / 2, 200, 'BRICKS SHIFT', '#88aacc', 22);
+        break;
+      case 'ghost':
+        this.paddle.setGhostShield(true);
+        floatingPoints(this, this.paddle.x, this.paddle.y - 30, 'GHOST SHIELD', '#99ffee', 18);
+        break;
+      case 'score2x':
+        this.startTimed(kind, Tuning.powerups.durations.score2x);
+        floatingPoints(this, this.paddle.x, this.paddle.y - 30, 'SCORE x2', '#ffd23a', 18);
+        break;
       case 'life':
         this.score.grantLife();
         this.events.emit(Events.LivesChanged, this.score.livesLeft);
@@ -1081,10 +1192,109 @@ export class GameScene extends Phaser.Scene {
       case 'slow':
         // Speed naturally returns via brick speed-up; no action.
         break;
+      case 'fast':
+        // Restore the speed scaling on expire.
+        this.balls.forEach((b) => {
+          b.scaleSpeed(1 / Tuning.powerupEffects.fastSpeedMul);
+          b.setFastMode(false);
+        });
+        break;
+      case 'through':
+        this.balls.forEach((b) => b.setThroughMode(false));
+        break;
+      case 'big':
+        this.balls.forEach((b) => b.setBigMode(false));
+        break;
+      case 'magnet':
+        this.balls.forEach((b) => b.setMagnetMode(false));
+        break;
+      case 'score2x':
+        // Pure score modifier — nothing to undo other than removing it
+        // from `active` (the multiplier in computeScoreMul reads from
+        // the active list directly).
+        break;
       default:
         break;
     }
     this.events.emit(Events.PowerUpExpired, kind);
+  }
+
+  /** Effective score multiplier from currently active power-ups. */
+  private computeScoreMul(): number {
+    let mul = 1;
+    for (const a of this.active) {
+      if (a.kind === 'score2x') mul *= 2;
+      else if (a.kind === 'fast') mul *= Tuning.powerupEffects.fastScoreMul;
+    }
+    return mul;
+  }
+
+  /**
+   * MAGNET: per-frame nudge toward the centroid of remaining breakable
+   * bricks. Preserves the ball's speed (only redirects), so it can't
+   * lock the ball into a single direction — it's more like a gentle
+   * curve toward the action.
+   */
+  private applyMagnetPull(ball: Ball, dt: number): void {
+    let cx = 0;
+    let cy = 0;
+    let count = 0;
+    for (const b of this.bricks) {
+      if (b.alive && b.isBreakable()) {
+        cx += b.x;
+        cy += b.y;
+        count++;
+      }
+    }
+    if (count === 0) return;
+    cx /= count;
+    cy /= count;
+    const dx = cx - ball.x;
+    const dy = cy - ball.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 1) return;
+    const speed = ball.speed;
+    if (speed <= 0) return;
+    const pull = Tuning.powerupEffects.magnetPullPerSec * dt;
+    let newVx = ball.vx + (dx / dist) * pull;
+    let newVy = ball.vy + (dy / dist) * pull;
+    const mag = Math.hypot(newVx, newVy);
+    if (mag <= 0) return;
+    // Re-normalize to original speed so MAGNET only redirects, never speeds.
+    newVx = (newVx / mag) * speed;
+    newVy = (newVy / mag) * speed;
+    ball.setVelocity(newVx, newVy);
+  }
+
+  /**
+   * GRAVITY: shift every alive brick down one cell. Bricks that would
+   * land below the paddle zone are destroyed in place (they count
+   * toward the breakable count, so the player doesn't need to chase
+   * them). The drop is animated so the field reads as physically
+   * settling rather than teleporting.
+   */
+  private applyGravityShift(): void {
+    const dy = Tuning.bricks.height + Tuning.bricks.rowGap;
+    const killBelow = this.paddle.top - Tuning.bricks.height;
+    for (const b of this.bricks) {
+      if (!b.alive) continue;
+      const targetY = b.y + dy;
+      if (targetY > killBelow) {
+        // Doomed brick — explode + count as broken.
+        candyBurst(this, b.x, b.y, b.color);
+        if (b.isBreakable()) this.bricksRemaining = Math.max(0, this.bricksRemaining - 1);
+        b.destroy();
+        continue;
+      }
+      this.tweens.add({
+        targets: b.sprite,
+        y: targetY,
+        duration: 360,
+        ease: 'Bounce.easeOut',
+      });
+    }
+    shake(this, 220, 0.008);
+    if (this.bricksRemaining === 0) this.completeLevel();
   }
 
   private spawnMultiBall(): void {

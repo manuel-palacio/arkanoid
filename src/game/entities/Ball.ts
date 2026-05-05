@@ -5,6 +5,9 @@ import { CANDY } from '../config/palette';
 /** Multi-ball extras cycle through this palette in order. */
 export const MULTIBALL_TINTS: number[] = [CANDY.cherry, CANDY.lime, CANDY.grape];
 
+/** Tint applied while SMASH is active — fiery so the player notices. */
+const THROUGH_TINT = 0xff5500;
+
 /**
  * Ball entity. We use Arcade Physics for body bookkeeping but drive velocity
  * manually — bounce reflection is computed by the CollisionSystem.
@@ -26,6 +29,14 @@ export class Ball {
   private glowTrail: Phaser.GameObjects.Particles.ParticleEmitter;
   /** unique tint for distinguishing balls in multi-ball */
   readonly tint: number;
+  /** SMASH power-up: ball passes through bricks dealing damage without bouncing. */
+  inThroughMode = false;
+  /** HUGE power-up: visual + body scale doubled. */
+  inBigMode = false;
+  /** MAGNET power-up: subtle pull toward remaining brick centroid each frame. */
+  inMagnetMode = false;
+  /** TURBO power-up: speed multiplier applied; affects HUD + score multiplier. */
+  inFastMode = false;
 
   constructor(scene: Phaser.Scene, x: number, y: number, tintOverride?: number) {
     const sp = scene.physics.add.image(x, y, 'ball-candy');
@@ -151,8 +162,60 @@ export class Ball {
   onWallBounce(scene: Phaser.Scene): void {
     this.sprite.setTint(CANDY.white);
     scene.time.delayedCall(80, () => {
-      if (this.sprite.active) this.sprite.setTint(this.tint);
+      if (this.sprite.active) this.sprite.setTint(this.activeTint());
     });
+  }
+
+  /** The "current" tint that should be applied — through-mode overrides. */
+  private activeTint(): number {
+    return this.inThroughMode ? THROUGH_TINT : this.tint;
+  }
+
+  // ---------- Power-up state setters ----------
+
+  setThroughMode(on: boolean): void {
+    this.inThroughMode = on;
+    this.sprite.setTint(this.activeTint());
+  }
+
+  /**
+   * HUGE: scale visual + body. We pass the ball radius to setCircle so the
+   * Arcade body keeps its center on the sprite center and collisions match
+   * the bigger visual. setCircle's offsets default to 0,0 which Phaser
+   * interprets relative to the sprite's top-left in untransformed (texture)
+   * coordinates — for a centered circle texture this places the body
+   * correctly.
+   */
+  setBigMode(on: boolean): void {
+    this.inBigMode = on;
+    const scale = on ? Tuning.powerupEffects.bigScale : 1;
+    this.sprite.setScale(scale);
+    const body = this.sprite.body as Phaser.Physics.Arcade.Body | null;
+    if (body) {
+      const r = Tuning.ball.radius * scale;
+      // Re-center: setCircle's default offset is (0,0) which assumes the
+      // texture is exactly 2r×2r. Our texture has +4px transparent halo,
+      // so a manual offset keeps the body centered as scale changes.
+      const halfTexture = ((Tuning.ball.radius + 4) * scale * 2) / 2;
+      const offset = halfTexture - r;
+      body.setCircle(r, offset, offset);
+    }
+  }
+
+  setMagnetMode(on: boolean): void {
+    this.inMagnetMode = on;
+  }
+
+  setFastMode(on: boolean): void {
+    this.inFastMode = on;
+  }
+
+  /** Reset all power-up state (level start / life lost). */
+  resetPowerStates(): void {
+    if (this.inBigMode) this.setBigMode(false);
+    if (this.inThroughMode) this.setThroughMode(false);
+    this.inMagnetMode = false;
+    this.inFastMode = false;
   }
 
   /** Squish-and-rebound scale pop on paddle contact. */

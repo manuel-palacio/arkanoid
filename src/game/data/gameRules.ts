@@ -23,13 +23,15 @@ export function awardBrickBreak(
   state: ScoreState,
   basePoints: number,
   nowMs: number,
+  externalMul = 1,
 ): { state: ScoreState; pointsAdded: number; chain: number } {
   const sinceMs = nowMs - state.lastBreakAt;
   const chain =
     sinceMs > Tuning.score.chainResetMs ? 1 : Math.min(state.chain + 1, Tuning.score.maxChain);
-  // Multiplier grows linearly: 1x, 1.25x, 1.5x, ... capped.
-  const multiplier = 1 + (chain - 1) * 0.25;
-  const pts = Math.round(basePoints * multiplier);
+  // Chain multiplier grows linearly: 1x, 1.25x, 1.5x, ... capped.
+  const chainMul = 1 + (chain - 1) * 0.25;
+  // externalMul is anything coming from active power-ups (score2x, fast).
+  const pts = Math.round(basePoints * chainMul * externalMul);
   return {
     state: {
       score: state.score + pts,

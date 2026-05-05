@@ -19,12 +19,28 @@ export interface BrickArchetype {
 }
 
 export type PowerUpKind =
+  // Paddle
   | 'expand'
   | 'shrink'
+  // Ball speed
   | 'slow'
+  | 'fast'
+  // Ball count / control
   | 'multi'
   | 'sticky'
+  // Offense
   | 'laser'
+  // Ball behavior
+  | 'through'
+  | 'big'
+  | 'magnet'
+  // Brick field
+  | 'bomb'
+  | 'gravity'
+  // Forgiveness / score
+  | 'ghost'
+  | 'score2x'
+  // Economy
   | 'life';
 
 export interface PowerUpDef {

@@ -35,9 +35,13 @@ export class ScoreSystem {
     return Math.max(this.hi, this.state.score);
   }
 
-  /** Award a brick break. Returns the points actually added and current chain. */
-  brickBroken(basePoints: number, nowMs: number): { points: number; chain: number } {
-    const out = awardBrickBreak(this.state, basePoints, nowMs);
+  /**
+   * Award a brick break. `externalMul` is applied on top of the chain
+   * multiplier — used by score2x (×2) and fast/TURBO (×1.5) power-ups.
+   * Returns the points actually added and current chain count.
+   */
+  brickBroken(basePoints: number, nowMs: number, externalMul = 1): { points: number; chain: number } {
+    const out = awardBrickBreak(this.state, basePoints, nowMs, externalMul);
     this.state = out.state;
     return { points: out.pointsAdded, chain: out.chain };
   }

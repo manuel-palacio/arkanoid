@@ -20,6 +20,9 @@ export class Paddle {
   private mode: PaddleMode = 'normal';
   private sticky = false;
   private glow: Phaser.GameObjects.Image;
+  /** GHOST power-up: one-shot reflection shield instead of losing the ball. */
+  private ghostShield = false;
+  private ghostTween?: Phaser.Tweens.Tween;
 
   constructor(
     private scene: Phaser.Scene,
@@ -102,6 +105,40 @@ export class Paddle {
   }
   isLaser(): boolean {
     return this.mode === 'laser';
+  }
+  hasGhostShield(): boolean {
+    return this.ghostShield;
+  }
+
+  /**
+   * Arm a one-use ghost shield. The next ball that would fall past the
+   * paddle gets reflected up instead of lost (see GameScene.onBallLost).
+   * The paddle pulses transparency while armed — visually distinct from
+   * sticky/laser so the player knows what's active.
+   */
+  setGhostShield(on: boolean): void {
+    if (on === this.ghostShield) return;
+    this.ghostShield = on;
+    if (on) {
+      this.ghostTween?.stop();
+      this.ghostTween = this.scene.tweens.add({
+        targets: this.sprite,
+        alpha: { from: 1, to: 0.45 },
+        yoyo: true,
+        repeat: -1,
+        duration: 600,
+        ease: 'sine.inOut',
+      });
+    } else {
+      this.ghostTween?.stop();
+      this.ghostTween = undefined;
+      this.sprite.setAlpha(1);
+    }
+  }
+
+  /** Consume the ghost shield (called after a save). */
+  consumeGhostShield(): void {
+    this.setGhostShield(false);
   }
 
   setSticky(s: boolean): void {

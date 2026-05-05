@@ -42,12 +42,28 @@ export const BRICK_CANDY_COLORS: Record<string, number> = {
 };
 
 export const POWERUP_CANDY_COLORS: Record<string, number> = {
+  // Paddle
   expand: CANDY.lime,
   shrink: CANDY.cherry,
+  // Ball speed
   slow: CANDY.blueberry,
+  fast: CANDY.tangerine,
+  // Ball count / control
   multi: CANDY.grape,
   sticky: CANDY.mint,
+  // Offense
   laser: CANDY.tangerine,
+  // Ball behavior
+  through: 0xff3300,
+  big: CANDY.lemon,
+  magnet: CANDY.grape,
+  // Brick field
+  bomb: 0xff5500,
+  gravity: 0x88aacc,
+  // Forgiveness / score
+  ghost: CANDY.mintHi,
+  score2x: CANDY.lemon,
+  // Economy
   life: 0xff4488,
 };
 

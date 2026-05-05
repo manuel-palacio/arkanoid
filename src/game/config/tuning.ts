@@ -103,18 +103,40 @@ export const Tuning = {
     speed: 220,
     width: 38,
     height: 16,
-    /** ms duration for timed power-ups */
+    /** ms duration for timed power-ups (one-shots not listed) */
     durations: {
       expand: 18000,
       shrink: 12000,
       slow: 12000,
+      fast: 6000,
       sticky: 18000,
       laser: 14000,
+      through: 8000,
+      big: 10000,
+      magnet: 12000,
+      score2x: 15000,
     },
     /** base drop chance (overridden by brick archetype dropChance) */
     baseDrop: 0.16,
     /** never spawn the same kind twice in a row */
     suppressRepeats: true,
+  },
+
+  // Power-up effect tuning (the bits that aren't durations).
+  powerupEffects: {
+    /** SMASH ball speed multiplier so the ball still reaches the top wall in a
+     *  reasonable time when no longer reflecting off bricks. */
+    throughSpeedMul: 1.05,
+    /** HUGE ball visual + body scale. */
+    bigScale: 2.0,
+    /** TURBO ball speed multiplier on apply (and inverse on expire). */
+    fastSpeedMul: 1.65,
+    /** Score multiplier while TURBO is active. */
+    fastScoreMul: 1.5,
+    /** MAGNET per-second velocity nudge magnitude (px/s) toward brick centroid. */
+    magnetPullPerSec: 110,
+    /** BOMB radius in grid cells (1 = 3×3 area centered on the hit brick). */
+    bombGridRadius: 1,
   },
 
   // Laser projectile
