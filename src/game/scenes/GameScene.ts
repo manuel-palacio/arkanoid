@@ -640,6 +640,20 @@ export class GameScene extends Phaser.Scene {
       // Post-process to keep the ball off the horizontal-stall trajectory.
       const cleaned = ensureMinVertical(r.vx, r.vy, speed);
       ball.setVelocity(cleaned.vx, cleaned.vy);
+      // BUMPER bricks: pinball-style speed boost on contact (+30%
+      // capped by ball.maxSpeed via scaleSpeed). Awards a small flat
+      // score per hit + a candy burst flash.
+      if (brick.archetype.kind === 'bumper') {
+        ball.scaleSpeed(1.3);
+        candyBurst(this, brick.x, brick.y, 0xffdd00);
+        const { points } = this.score.brickBroken(
+          brick.archetype.score,
+          this.time.now,
+          this.computeScoreMul(),
+        );
+        this.events.emit(Events.ScoreChanged, this.score.score, this.score.highScore, points);
+        floatingPoints(this, brick.x, brick.y - 6, `+${points}`, '#ffdd00', 14);
+      }
       // Resolve penetration along whichever axis actually flipped.
       if (r.vx !== oldVx) {
         if (r.vx > 0) ball.setPosition(brick.right + ball.radius, ball.y);
@@ -674,34 +688,38 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * BOMB detonation. Hits every alive brick within 1 grid cell of the
-   * source. Multi-hit bricks take 1 damage; single-hit bricks die. The
-   * source brick goes down via its own hit() call (so its destruction
-   * effects + scoring fire normally).
+   * Hit every alive brick within 1 grid cell of (cx, cy). Used by both
+   * the BOMB power-up (with the source brick included via detonateBomb)
+   * and BOMB-bricks chaining on destruction (source already breaking,
+   * exclude).
    */
-  private detonateBomb(source: Brick, ball: Ball): void {
+  private bombChainNeighbors(cx: number, cy: number, ball: Ball): void {
     const cellW = Tuning.bricks.width + Tuning.bricks.colGap;
     const cellH = Tuning.bricks.height + Tuning.bricks.rowGap;
     const radius = Tuning.powerupEffects.bombGridRadius;
-    candyBurst(this, source.x, source.y, 0xff5500);
+    candyBurst(this, cx, cy, 0xff5500);
     shake(this, 180, 0.012);
     comboFlash(this, 0xff5500, 0.25);
-    getAudio().playSfx('brickBreak');
     haptic.bump();
-    const victims: Brick[] = [];
     for (const b of this.bricks) {
       if (!b.alive) continue;
-      if (b === source) continue;
-      const dx = Math.abs(b.x - source.x) / cellW;
-      const dy = Math.abs(b.y - source.y) / cellH;
-      if (dx <= radius + 0.4 && dy <= radius + 0.4) victims.push(b);
+      const dx = Math.abs(b.x - cx) / cellW;
+      const dy = Math.abs(b.y - cy) / cellH;
+      if (dx <= radius + 0.4 && dy <= radius + 0.4) {
+        const r = b.hit(this);
+        if (r.destroyed) this.handleBrickDestroyed(b, ball);
+      }
     }
-    for (const v of victims) {
-      const r = v.hit(this);
-      if (r.destroyed) this.handleBrickDestroyed(v, ball);
-    }
-    // Resolve the source brick last so the chain feels like an outward
-    // wave from the impact point.
+  }
+
+  /**
+   * BOMB power-up detonation: chain neighbours then break the source
+   * brick. Source is hit last so the chain reads as an outward wave
+   * from the impact point.
+   */
+  private detonateBomb(source: Brick, ball: Ball): void {
+    this.bombChainNeighbors(source.x, source.y, ball);
+    getAudio().playSfx('brickBreak');
     const r = source.hit(this);
     if (r.destroyed) this.handleBrickDestroyed(source, ball);
   }
@@ -741,15 +759,30 @@ export class GameScene extends Phaser.Scene {
       });
     }
 
-    // Drop chance.
+    // Drop chance + CURSED brick override.
     const dropChance = brick.archetype.dropChance;
     if (this.puSelector.shouldDrop(dropChance)) {
       const def = levelByIndex(this.levelIndex);
       const allowed = def?.allowedPowerUps;
-      const kind = this.puSelector.pickNext(allowed);
+      let kind: PowerUpKind;
+      if (brick.archetype.kind === 'cursed') {
+        // CURSED looks like Special but always drops a "negative" kind.
+        const cursed: PowerUpKind[] = ['shrink', 'fast'];
+        kind = cursed[Math.floor(Math.random() * cursed.length)] ?? 'shrink';
+      } else {
+        kind = this.puSelector.pickNext(allowed);
+      }
       const pu = new PowerUp(this, brick.x, brick.y, kind);
       this.powerups.push(pu);
       getAudio().playSfx('powerupDrop', 0.5);
+    }
+
+    // BOMB brick: chain-reaction on destruction. The source brick is
+    // already breaking via the regular hit; bombChainNeighbors hits
+    // every alive brick in the surrounding 3×3 cell. Cascading bombs
+    // are guarded by Brick.hit's `if (!alive)` early-return.
+    if (brick.archetype.kind === 'bomb') {
+      this.bombChainNeighbors(brick.x, brick.y, _ball);
     }
 
     // Speed up ball slightly with each break.

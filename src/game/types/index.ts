@@ -1,6 +1,15 @@
 export type Vec2 = { x: number; y: number };
 
-export type BrickKind = 'standard' | 'tough' | 'hard' | 'indestructible' | 'special';
+export type BrickKind =
+  | 'standard'
+  | 'tough'
+  | 'hard'
+  | 'indestructible'
+  | 'special'
+  | 'bomb'
+  | 'moving'
+  | 'bumper'
+  | 'cursed';
 
 export interface BrickArchetype {
   /** unique key */

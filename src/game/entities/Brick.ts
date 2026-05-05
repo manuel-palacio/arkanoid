@@ -65,7 +65,7 @@ export class Brick {
   /** Returns true if the brick was destroyed by this hit. */
   hit(scene: Phaser.Scene): { destroyed: boolean } {
     if (!this.alive || this.destroying) return { destroyed: false };
-    if (this.archetype.kind === 'indestructible') {
+    if (this.archetype.kind === 'indestructible' || this.archetype.kind === 'bumper') {
       this.flash(scene);
       return { destroyed: false };
     }
@@ -110,7 +110,7 @@ export class Brick {
   }
 
   isBreakable(): boolean {
-    return this.archetype.kind !== 'indestructible';
+    return this.archetype.kind !== 'indestructible' && this.archetype.kind !== 'bumper';
   }
 
   get x(): number {

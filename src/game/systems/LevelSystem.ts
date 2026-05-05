@@ -41,8 +41,9 @@ export function buildLevel(scene: Phaser.Scene, def: LevelDef): ParsedLevel {
       bricks.push(brick);
       if (brick.isBreakable()) breakable++;
       // Subtle, staggered breathing pulse so the field feels alive.
-      // Indestructible bricks stay still — they're meant to feel inert.
-      if (arche.kind !== 'indestructible') {
+      // Indestructible + bumper bricks stay still — they're meant to
+      // feel inert / mechanical.
+      if (arche.kind !== 'indestructible' && arche.kind !== 'bumper') {
         scene.tweens.add({
           targets: brick.sprite,
           alpha: { from: 0.86, to: 1 },
@@ -51,6 +52,23 @@ export function buildLevel(scene: Phaser.Scene, def: LevelDef): ParsedLevel {
           repeat: -1,
           ease: 'sine.inOut',
           delay: ((r * 7 + c * 11) % 9) * 60,
+        });
+      }
+
+      // MOVING bricks: oscillate horizontally inside their cell so the
+      // player has to lead a moving target. Range stays narrow (about
+      // 1.4 brick widths) so they never collide with their neighbours.
+      if (arche.kind === 'moving') {
+        const range = (bw + colGap) * 1.4;
+        const duration = 1800 + ((r * 71 + c * 23) % 800);
+        scene.tweens.add({
+          targets: brick.sprite,
+          x: { from: x - range, to: x + range },
+          duration,
+          yoyo: true,
+          repeat: -1,
+          ease: 'sine.inOut',
+          delay: ((r * 5 + c * 13) % 6) * 100,
         });
       }
     }
