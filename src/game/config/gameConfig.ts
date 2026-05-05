@@ -55,6 +55,11 @@ export function createPhaserConfig(parent: HTMLElement): Phaser.Types.Core.GameC
       autoCenter: Phaser.Scale.CENTER_BOTH,
       width: GAME_WIDTH,
       height: GAME_HEIGHT,
+      // Lower bound prevents Phaser rendering at sub-100px on tiny
+      // emulators / devtools previews; upper bound keeps the canvas at
+      // its logical size on 4K monitors instead of upscaling blurry.
+      min: { width: 270, height: 480 },
+      max: { width: GAME_WIDTH, height: GAME_HEIGHT },
     },
     physics: {
       // We use Arcade Physics only for collider helpers and overlap; bounce

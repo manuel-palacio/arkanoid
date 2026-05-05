@@ -19,7 +19,15 @@
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
+    <!-- Desktop-only side panel (left). Hidden on mobile via CSS.
+         Populated at runtime by src/game/ui/SidePanels.ts. -->
+    <aside id="panel-left" class="side-panel side-panel--left" aria-hidden="true"></aside>
+
     <div id="game"></div>
+
+    <!-- Desktop-only side panel (right). -->
+    <aside id="panel-right" class="side-panel side-panel--right" aria-hidden="true"></aside>
+
     <div id="rotate-prompt" aria-hidden="true">
       <div class="rotate-icon">⟳</div>
       <div class="rotate-msg">ROTATE TO PORTRAIT</div>

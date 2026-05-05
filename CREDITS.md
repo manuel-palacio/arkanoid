@@ -22,8 +22,8 @@ free-licensed arcade SFX before shipping.
 | `ui-click.ogg` | [Kenney — Interface Sounds](https://kenney.nl/assets/interface-sounds) (`click_001.ogg`) | Kenney (CC0) |
 | `level-complete.ogg` | [Kenney — Music Jingles](https://kenney.nl/assets/music-jingles) (`positive_jingle.ogg`) | Kenney (CC0) |
 | `game-over.ogg` | [Kenney — Music Jingles](https://kenney.nl/assets/music-jingles) (`negative_jingle.ogg`) | Kenney (CC0) |
-| `music-menu.ogg` | **silent placeholder** (4 s `anullsrc`) — drop in a CC0 candy/arcade loop | TBD |
-| `music-game.ogg` | **silent placeholder** (4 s `anullsrc`) — drop in a CC0 candy/arcade loop | TBD |
+| `music-menu.ogg` | **locally synthesized** — C-Am-F-G chord progression generated with ffmpeg sine sources (8 s loop, lowpass 1.5 kHz, gentle envelope) | (CC0, original) |
+| `music-game.ogg` | **locally synthesized** — C-G-Am-F upbeat progression with bass + brighter lowpass (4.8 s loop) | (CC0, original) |
 
 ### Where to grab real music tracks (CC0)
 

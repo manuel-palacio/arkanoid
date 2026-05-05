@@ -11,6 +11,7 @@ import { UIScene } from './scenes/UIScene';
 import { PauseScene } from './scenes/PauseScene';
 import { GameOverScene } from './scenes/GameOverScene';
 import { VictoryScene } from './scenes/VictoryScene';
+import { SidePanels } from './ui/SidePanels';
 
 export interface AppGameOptions {
   parent: HTMLElement;
@@ -49,10 +50,20 @@ export function createGame(opts: AppGameOptions): Phaser.Game {
   game.registry.set('streakDays', streakResult.state.days);
   game.registry.set('streakBonusPending', streakResult.state.bonusPending);
 
+  // Desktop-only HTML side panels flanking the canvas. CSS hides them
+  // below 768 px viewport width so mobile is untouched.
+  let sidePanels: SidePanels | null = null;
+  game.events.once(Phaser.Core.Events.READY, () => {
+    sidePanels = new SidePanels(game);
+  });
+
   // Tear down the AudioManager singleton when the game is destroyed (Vite
   // HMR or page-unload). Browsers cap concurrent AudioContexts at ~6, so
   // leaking one per reload silently kills audio after a few HMR cycles.
-  game.events.once(Phaser.Core.Events.DESTROY, () => getAudio().destroy());
+  game.events.once(Phaser.Core.Events.DESTROY, () => {
+    sidePanels?.destroy();
+    getAudio().destroy();
+  });
 
   if (import.meta.hot) {
     import.meta.hot.dispose(() => {
