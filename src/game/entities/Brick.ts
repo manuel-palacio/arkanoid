@@ -19,6 +19,18 @@ export class Brick {
   private cracksOverlay?: Phaser.GameObjects.Image;
   private shineOverlay?: Phaser.GameObjects.Image;
   private destroying = false;
+  /** REGEN: ms since last hit; heals 1 HP every 4 s. */
+  private regenAccumMs = 0;
+  /** INVISIBLE: smoothed alpha tracker (0 hidden, 1 visible). */
+  private revealAlpha = 0;
+  /** INVISIBLE: ms since the ball was within reveal range. */
+  private revealHoldMs = 0;
+  /**
+   * WARDEN linkage. When set on a non-warden brick, all damage is
+   * blocked while the linked warden is alive. Cleared naturally when
+   * the warden dies (its `alive` flag flips → check returns false).
+   */
+  wardedBy: Brick | null = null;
 
   /** Effective color (palette override, else candy color for kind). */
   readonly color: number;
@@ -59,16 +71,88 @@ export class Brick {
         .setAlpha(0.45);
     }
 
+    // INVISIBLE: starts fully hidden. Reveal/fade is driven by
+    // proximity to the ball — see update().
+    if (archetype.kind === 'invisible') {
+      this.sprite.setAlpha(0);
+      this.shineOverlay?.setAlpha(0);
+    }
+
     this.playEntrance(scene);
+  }
+
+  /**
+   * Per-frame tick. `ballMinDist` is the distance from this brick's
+   * center to the nearest ball — only used by INVISIBLE bricks to
+   * fade in/out. REGEN heals 1 HP every 4 s of no-hit. Other kinds
+   * are no-ops.
+   */
+  update(deltaMs: number, ballMinDist?: number): void {
+    if (!this.alive || this.destroying) return;
+    switch (this.archetype.kind) {
+      case 'regen':
+        this.tickRegen(deltaMs);
+        break;
+      case 'invisible':
+        this.tickInvisible(deltaMs, ballMinDist ?? Number.POSITIVE_INFINITY);
+        break;
+      default:
+        break;
+    }
+  }
+
+  private tickRegen(deltaMs: number): void {
+    if (this.hp >= this.archetype.hits) return;
+    this.regenAccumMs += deltaMs;
+    if (this.regenAccumMs >= 4000) {
+      this.regenAccumMs = 0;
+      this.hp = Math.min(this.archetype.hits, this.hp + 1);
+      // Brick is healing — restore the candy tint and shed the cracks
+      // if it's back to full HP.
+      this.sprite.setTint(this.color);
+      this.shineOverlay?.setAlpha(0.45);
+      if (this.hp === this.archetype.hits) {
+        this.cracksOverlay?.destroy();
+        this.cracksOverlay = undefined;
+      }
+    }
+  }
+
+  private tickInvisible(deltaMs: number, dist: number): void {
+    const NEAR = (Tuning.bricks.width + Tuning.bricks.colGap) * 2;
+    const HOLD_MS = 2000;
+    if (dist < NEAR) {
+      // Reveal — climb to alpha 1 over ~200 ms.
+      this.revealAlpha = Math.min(1, this.revealAlpha + deltaMs / 200);
+      this.revealHoldMs = 0;
+    } else {
+      // Hold for HOLD_MS after the ball drifts away, then fade.
+      this.revealHoldMs += deltaMs;
+      if (this.revealHoldMs > HOLD_MS) {
+        this.revealAlpha = Math.max(0, this.revealAlpha - deltaMs / 400);
+      }
+    }
+    this.sprite.setAlpha(this.revealAlpha);
+    this.shineOverlay?.setAlpha(this.revealAlpha * 0.45);
   }
 
   /** Returns true if the brick was destroyed by this hit. */
   hit(scene: Phaser.Scene): { destroyed: boolean } {
     if (!this.alive || this.destroying) return { destroyed: false };
+    // Warded by a still-alive warden — block damage entirely (the ball
+    // still bounces normally because collision is computed before this
+    // method is called). Shows a soft cyan ping so the player knows
+    // the shield ate the hit.
+    if (this.wardedBy?.alive) {
+      this.shieldPing(scene);
+      return { destroyed: false };
+    }
     if (this.archetype.kind === 'indestructible' || this.archetype.kind === 'bumper') {
       this.flash(scene);
       return { destroyed: false };
     }
+    // REGEN: any meaningful hit resets the heal timer.
+    if (this.archetype.kind === 'regen') this.regenAccumMs = 0;
     this.hp -= 1;
     this.flash(scene);
     if (this.hp <= 0) {
@@ -160,6 +244,22 @@ export class Brick {
       duration: 280,
       ease: 'Back.easeOut',
       delay: gridIndex * 8,
+    });
+  }
+
+  /**
+   * Visual ping for a hit that bounced off a warden's shield. Brief
+   * cyan flash + outward ring so the player understands "no damage
+   * dealt, take out the warden first". Reuses the brick's sprite —
+   * no extra particle cost.
+   */
+  private shieldPing(scene: Phaser.Scene): void {
+    if (!this.alive) return;
+    const original = this.color;
+    this.sprite.setTint(0x99ccff);
+    scene.time.delayedCall(80, () => {
+      if (!this.alive || this.destroying) return;
+      this.sprite.setTint(original);
     });
   }
 

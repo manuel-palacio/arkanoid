@@ -91,6 +91,66 @@ export const BRICK_ARCHETYPES: Record<string, BrickArchetype> = {
     dropChance: 1,
     glyph: 'brick-candy',
   },
+  // REGEN: 3 HP, heals 1 HP every 4s unless re-hit. Player must commit
+  // to taking it down quickly or work around it.
+  R: {
+    id: 'R',
+    kind: 'regen',
+    hits: 3,
+    score: 160,
+    color: 0x39ff14,
+    dropChance: 0.1,
+    glyph: 'brick-candy',
+  },
+  // INVISIBLE: alpha 0 by default; reveals while a ball is within
+  // ~2 cells, then fades back after a brief hold. Still collidable
+  // while invisible — surprise hits are the point.
+  V: {
+    id: 'V',
+    kind: 'invisible',
+    hits: 1,
+    score: 100,
+    color: 0xffffff,
+    dropChance: 0.2,
+    glyph: 'brick-candy',
+  },
+  // DEFLECTOR: forces a 45° outgoing angle (in the same quadrant as
+  // the incoming velocity). Enables puzzle geometry — the ball MUST
+  // pass through a chain of deflectors to reach a target.
+  D: {
+    id: 'D',
+    kind: 'deflector',
+    hits: 2,
+    score: 70,
+    color: 0xffa500,
+    dropChance: 0.12,
+    glyph: 'brick-candy',
+  },
+  // SPAWNER: 2-hit brick that releases a slow-drifting enemy on its
+  // first hit, removed when the brick dies. Implemented in a follow-up
+  // commit (needs an Enemy entity); the data slot is reserved here so
+  // levels can already use 'G' without breaking parsing.
+  G: {
+    id: 'G',
+    kind: 'spawner',
+    hits: 2,
+    score: 100,
+    color: 0xff00ff,
+    dropChance: 0,
+    glyph: 'brick-candy',
+  },
+  // WARDEN: 2-hit brick that shields all bricks one row below. Warded
+  // bricks reject damage entirely — the ball still bounces, but no
+  // HP is taken — until the warden itself is destroyed.
+  W: {
+    id: 'W',
+    kind: 'warden',
+    hits: 2,
+    score: 130,
+    color: 0x7f7fff,
+    dropChance: 0.18,
+    glyph: 'brick-candy',
+  },
 };
 
 export function archetypeForSymbol(sym: string): BrickArchetype | null {
@@ -106,5 +166,10 @@ export const BREAKABLE_KINDS: ReadonlySet<BrickKind> = new Set([
   'bomb',
   'moving',
   'cursed',
+  'regen',
+  'invisible',
+  'deflector',
+  'spawner',
+  'warden',
   // 'bumper' is intentionally NOT breakable.
 ]);

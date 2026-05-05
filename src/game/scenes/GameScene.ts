@@ -262,12 +262,40 @@ export class GameScene extends Phaser.Scene {
     this.handlePaddleInput(delta);
     this.paddle.update();
     this.tickBalls(time, delta);
+    this.tickBricks(delta);
     this.tickPowerups();
     this.tickProjectiles(time);
     this.tickActivePowerUps(delta);
     this.tickTension(time);
     this.drawAimLine();
     if (this.debug) this.drawDebug();
+  }
+
+  /**
+   * Per-frame brick update — drives REGEN healing and INVISIBLE
+   * proximity reveal. The kind switch inside Brick.update() makes
+   * this a no-op for everything else, so iterating every brick each
+   * frame is cheap.
+   */
+  private tickBricks(deltaMs: number): void {
+    const needsBallDist = this.bricks.some(
+      (b) => b.alive && b.archetype.kind === 'invisible',
+    );
+    for (const b of this.bricks) {
+      if (!b.alive) continue;
+      if (b.archetype.kind === 'invisible' && needsBallDist) {
+        let minDist = Number.POSITIVE_INFINITY;
+        for (const ball of this.balls) {
+          const dx = ball.x - b.x;
+          const dy = ball.y - b.y;
+          const d = Math.hypot(dx, dy);
+          if (d < minDist) minDist = d;
+        }
+        b.update(deltaMs, minDist);
+      } else {
+        b.update(deltaMs);
+      }
+    }
   }
 
   /** Used by EffectsSystem.hitstop() to freeze ball motion briefly. */
@@ -649,7 +677,18 @@ export class GameScene extends Phaser.Scene {
       );
       // Post-process to keep the ball off the horizontal-stall trajectory.
       const cleaned = ensureMinVertical(r.vx, r.vy, speed);
-      ball.setVelocity(cleaned.vx, cleaned.vy);
+      // DEFLECTOR: force the outgoing direction to a 45° angle while
+      // preserving the post-bounce quadrant. Run BEFORE setVelocity so
+      // the ball gets the puzzle-grade redirect, not the natural bounce.
+      let outVx = cleaned.vx;
+      let outVy = cleaned.vy;
+      if (brick.archetype.kind === 'deflector') {
+        const dSpeed = Math.hypot(outVx, outVy);
+        const sx = outVx >= 0 ? 1 : -1;
+        const sy = outVy >= 0 ? 1 : -1;
+        outVx = sx * dSpeed * Math.SQRT1_2;
+        outVy = sy * dSpeed * Math.SQRT1_2;
+      }
       // BUMPER bricks: pinball-style speed boost on contact (+30%
       // capped by ball.maxSpeed via scaleSpeed). Awards a small flat
       // score per hit + a candy burst flash.

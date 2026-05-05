@@ -16,7 +16,12 @@ export type BrickKind =
   | 'bomb'
   | 'moving'
   | 'bumper'
-  | 'cursed';
+  | 'cursed'
+  | 'regen'
+  | 'invisible'
+  | 'deflector'
+  | 'spawner'
+  | 'warden';
 
 export interface BrickArchetype {
   /** unique key */

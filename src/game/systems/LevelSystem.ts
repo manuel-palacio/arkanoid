@@ -42,8 +42,13 @@ export function buildLevel(scene: Phaser.Scene, def: LevelDef): ParsedLevel {
       if (brick.isBreakable()) breakable++;
       // Subtle, staggered breathing pulse so the field feels alive.
       // Indestructible + bumper bricks stay still — they're meant to
-      // feel inert / mechanical.
-      if (arche.kind !== 'indestructible' && arche.kind !== 'bumper') {
+      // feel inert / mechanical. Invisible bricks are alpha-driven by
+      // ball proximity so the breathing pulse would fight that.
+      if (
+        arche.kind !== 'indestructible' &&
+        arche.kind !== 'bumper' &&
+        arche.kind !== 'invisible'
+      ) {
         scene.tweens.add({
           targets: brick.sprite,
           alpha: { from: 0.86, to: 1 },
@@ -73,6 +78,22 @@ export function buildLevel(scene: Phaser.Scene, def: LevelDef): ParsedLevel {
       }
     }
   });
+
+  // WARDEN linkage: connect every warden to the bricks one row below
+  // it. While the warden is alive, those bricks reject damage. Done as
+  // a post-pass so we can reference Brick instances we just created.
+  const cellH = bh + rowGap;
+  for (const warden of bricks) {
+    if (warden.archetype.kind !== 'warden') continue;
+    for (const other of bricks) {
+      if (other === warden) continue;
+      const dy = other.y - warden.y;
+      // Within ±2 px of exactly one cell below — that's "the row below".
+      if (Math.abs(dy - cellH) < 2) {
+        other.wardedBy = warden;
+      }
+    }
+  }
 
   return { bricks, breakableCount: breakable };
 }

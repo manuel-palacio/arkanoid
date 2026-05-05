@@ -8,9 +8,9 @@ const level08: LevelDef = {
   allowedPowerUps: ['expand', 'laser', 'slow', 'life'],
   rows: [
     '.............',
-    'HHHHHHHHHHHHH',
+    'HHHHWWHWWHHHH',
     'HSSSSSSSSSSSH',
-    'HSST*S*S*TSSH',
+    'HSSTRSRSRTSSH',
     'HSSTSSSSSTSSH',
     'HSSTSITISTSSH',
     'HSSTI*H*ITSSH',
