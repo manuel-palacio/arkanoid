@@ -844,15 +844,33 @@ export class GameScene extends Phaser.Scene {
     }
     // CHARGED: deal 3 hits in a single contact, then revert to normal.
     // One-shots single-hit bricks; takes Tough/Hard down in one swing.
+    // BUT: don't consume the charge on a warded brick — the warden's
+    // shield blocks all damage, so the charge would be wasted on a
+    // no-op. Treat warded contacts as a regular shielded hit and keep
+    // the charge for the next strike that can actually land. Without
+    // this guard, the ball can loop in place against a warded brick
+    // (issue #38) until something else breaks the cycle.
     if (ball.mode === 'charged' && brick.isBreakable()) {
+      if (brick.wardedBy?.alive) {
+        brick.hit(this); // shieldPing fires inside; no damage dealt
+        getAudio().playSfx('brickHit', 0.5);
+        return; // mode NOT consumed — charge preserved for the warden
+      }
       ball.clearMode();
       let destroyed = false;
       for (let i = 0; i < 3 && !destroyed; i++) {
         const r = brick.hit(this);
         if (r.destroyed) destroyed = true;
       }
-      if (destroyed) this.handleBrickDestroyed(brick, ball);
-      else getAudio().playSfx('brickHit', 0.7);
+      if (destroyed) {
+        this.handleBrickDestroyed(brick, ball);
+      } else {
+        // Brick survived the 3-hit charge burst — apply hitstop so
+        // the ball has a frame to physically clear the brick AABB
+        // before the next collision pass fires again.
+        getAudio().playSfx('brickHit', 0.7);
+        hitstop(this);
+      }
       return;
     }
     const result = brick.hit(this);
@@ -862,9 +880,14 @@ export class GameScene extends Phaser.Scene {
       getAudio().playSfx('brickHit', 0.5);
     }
     // CHARGED rally counter: only count hits during plain 'normal' mode
-    // so power-up streaks don't pre-empt the rally reward. Each ball
-    // contributes — multi-ball lets two players-worth of hits stack.
-    if (ball.mode === 'normal' && brick.isBreakable()) {
+    // AND on bricks that actually took damage — warded contacts don't
+    // count as progress, so they shouldn't tick the combo toward the
+    // CHARGED reward.
+    if (
+      ball.mode === 'normal' &&
+      brick.isBreakable() &&
+      !brick.wardedBy?.alive
+    ) {
       this.consecutiveBrickHits += 1;
       if (this.consecutiveBrickHits >= Tuning.ball.chargedThreshold) {
         this.consecutiveBrickHits = 0;
@@ -880,6 +903,10 @@ export class GameScene extends Phaser.Scene {
    * active boost to the charged consumption.
    */
   private activateCharged(): void {
+    // Belt-and-suspenders: the caller already zeroes the counter, but
+    // resetting here too closes the door on any double-trigger path
+    // that lands on activateCharged from a different code site.
+    this.consecutiveBrickHits = 0;
     let promoted = 0;
     for (const b of this.balls) {
       if (b.mode === 'normal') {
