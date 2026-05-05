@@ -6,12 +6,6 @@ const level02: LevelDef = {
   bg: 0x080612,
   ballSpeedMul: 1.05,
   allowedPowerUps: ['expand', 'slow', 'multi', 'sticky', 'life'],
-  palette: {
-    standard: 0xb2a48b,
-    tough: 0xff8a3d,
-    hard: 0x8e6f4a,
-    special: 0xffd54f,
-  },
   rows: [
     '.............',
     '.SSSSSSSSSSS.',

@@ -44,18 +44,30 @@ export class TextureFactory {
     g.fillStyle(0xffffff, 1);
     g.fillRoundedRect(2.5, 2.5, w - 5, h - 5, Math.max(2, r - 2));
 
-    // 3) Top specular highlight — wide bright ellipse.
-    const hiW = w * 0.46;
-    const hiH = h * 0.32;
-    g.fillStyle(0xffffff, 0.65);
-    g.fillEllipse(w / 2, h * 0.28, hiW, hiH);
+    // 3) Top-edge specular strip — thin bright band along the top
+    //    ~28% of the brick. A wide horizontal stripe reads like light
+    //    catching the upper face of a 3D candy; an ellipse at the
+    //    center renders as a hard "white dot" at the small brick sizes
+    //    used on mobile.
+    g.fillStyle(0xffffff, 0.55);
+    g.fillRoundedRect(
+      Math.max(3, w * 0.1),
+      1,
+      w - Math.max(6, w * 0.2),
+      Math.max(2, Math.floor(h * 0.28)),
+      Math.max(1, r - 2),
+    );
 
-    // 4) Side gradient — left edge brighter, right edge darker (faked via
-    //    thin alpha bars).
-    g.fillStyle(0xffffff, 0.18);
-    g.fillRoundedRect(2, 2, Math.max(3, w * 0.18), h - 4, Math.max(2, r - 2));
-    g.fillStyle(0x000000, 0.12);
-    g.fillRoundedRect(w - Math.max(3, w * 0.18) - 2, 2, Math.max(3, w * 0.18), h - 4, Math.max(2, r - 2));
+    // 4) Side gradient — left edge brighter, right edge darker. Use a
+    //    bar width derived from brick size and clamp the corner radius
+    //    to half the bar width so the bar can never collapse into a
+    //    radius-only "blob" on small textures.
+    const barW = Math.max(2, Math.floor(w * 0.14));
+    const barR = Math.min(Math.floor(barW / 2), 2);
+    g.fillStyle(0xffffff, 0.15);
+    g.fillRoundedRect(2, 3, barW, h - 6, barR);
+    g.fillStyle(0x000000, 0.1);
+    g.fillRoundedRect(w - barW - 2, 3, barW, h - 6, barR);
 
     // 5) Bottom rim — thin darker strip.
     g.fillStyle(0x000000, 0.32);
@@ -70,19 +82,24 @@ export class TextureFactory {
     const h = Tuning.bricks.height;
     const g = this.scene.add.graphics({ x: 0, y: 0 });
 
-    // Wide top-center ellipse (the gem highlight).
-    g.fillStyle(0xffffff, 0.7);
-    g.fillEllipse(w / 2, h * 0.32, w * 0.48, h * 0.34);
-
-    // Tiny 4-point sparkle star at top-left.
-    const sx = w * 0.22;
-    const sy = h * 0.28;
-    const arm = Math.min(w, h) * 0.16;
-    g.fillStyle(0xffffff, 0.95);
-    // diamond (4 points)
-    g.fillTriangle(sx, sy - arm, sx - arm * 0.4, sy, sx + arm * 0.4, sy);
-    g.fillTriangle(sx, sy + arm, sx - arm * 0.4, sy, sx + arm * 0.4, sy);
-    g.fillCircle(sx, sy, arm * 0.32);
+    // Soft diagonal gleam in the top-left corner — reads as a glancing
+    // light reflection off a smooth candy surface. Two overlapping
+    // ellipses only — no fillCircle (which rendered as a hard white
+    // disc on small bricks under ADD blend) and no triangles.
+    g.fillStyle(0xffffff, 0.55);
+    g.fillEllipse(
+      w * 0.22,
+      h * 0.25,
+      Math.max(4, w * 0.22),
+      Math.max(2, h * 0.28),
+    );
+    g.fillStyle(0xffffff, 0.3);
+    g.fillEllipse(
+      w * 0.32,
+      h * 0.2,
+      Math.max(3, w * 0.14),
+      Math.max(1, h * 0.18),
+    );
 
     g.generateTexture('gem-shine', w, h);
     g.destroy();

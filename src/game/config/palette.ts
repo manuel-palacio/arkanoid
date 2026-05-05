@@ -26,6 +26,13 @@ export const CANDY = {
   darkBg: 0x0d0520,
 } as const;
 
+/**
+ * Last-resort fallback only — normally every brick receives a
+ * colorOverride from LevelSystem.defaultRowColor() (which now covers
+ * all kinds with row-cycled candy hues). This map fires solely when
+ * a brick is constructed without a colorOverride, e.g. ad-hoc test
+ * spawns.
+ */
 export const BRICK_CANDY_COLORS: Record<string, number> = {
   standard: CANDY.lemon,
   tough: CANDY.tangerine,

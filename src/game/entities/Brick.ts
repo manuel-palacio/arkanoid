@@ -47,12 +47,16 @@ export class Brick {
     // so this file stays tree-shakeable in the Node test environment —
     // any runtime Phaser.* reference triggers Phaser's window-dependent
     // OS init and breaks the level-parse tests.
+    //
+    // Alpha 0.45 (down from 0.8) — the gem-shine texture renders under
+    // ADD blend, so even a soft gleam burns near-white if alpha is too
+    // high. 0.45 keeps the highlight readable as a sheen.
     if (archetype.kind !== 'indestructible') {
       this.shineOverlay = scene.add
         .image(x, y, 'gem-shine')
         .setDepth(11)
         .setBlendMode('ADD')
-        .setAlpha(0.8);
+        .setAlpha(0.45);
     }
 
     this.playEntrance(scene);

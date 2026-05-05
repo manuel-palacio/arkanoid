@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { Tuning } from '../config/tuning';
+import { darken, lighten } from '../config/palette';
 import { archetypeForSymbol } from '../data/brickTypes';
 import type { BrickArchetype, LevelDef } from '../types';
 import { Brick } from '../entities/Brick';
@@ -76,16 +77,43 @@ function paletteColorFor(def: LevelDef, arche: BrickArchetype): number | undefin
 }
 
 /**
- * Fallback color when a level has no palette override. We rotate
- * standard bricks by row through the rainbow so the field reads as
- * horizontal color stripes (classic arcade look) instead of one tone.
- * Other archetypes keep their distinct archetype colors so they remain
- * visually unambiguous (tough = orange, hard = purple, etc).
+ * Row-driven candy tint applied to EVERY brick kind. Standard bricks
+ * use the row's rainbow slot directly; tough/hard/special offset by a
+ * fixed number of slots so adjacent same-row bricks of different kinds
+ * still read as different colors, then lighten or darken so the kind
+ * is visually distinct (tougher = darker, special = brighter).
+ * Indestructible bricks ignore the palette and stay steel-gray —
+ * intentionally dull so they read as immovable obstacles.
  */
 function defaultRowColor(arche: BrickArchetype, rowIdx: number): number | undefined {
-  if (arche.kind !== 'standard') return undefined;
   const palette = Tuning.bricks.rainbowRowColors;
-  return palette[rowIdx % palette.length];
+  // palette is declared `as const` with 14 entries — length > 0 is a
+  // compile-time invariant, so we don't need a runtime guard.
+  const len = palette.length;
+
+  switch (arche.kind) {
+    case 'standard':
+      return palette[rowIdx % len]!;
+    case 'tough': {
+      // Offset by 2 slots so tough bricks contrast with standard in same row.
+      const base = palette[(rowIdx + 2) % len]!;
+      return darken(base, 0.15);
+    }
+    case 'hard': {
+      // Offset by 4 slots, noticeably darker to read as "armored".
+      const base = palette[(rowIdx + 4) % len]!;
+      return darken(base, 0.28);
+    }
+    case 'special': {
+      // Offset by 3 slots, lightened so they pop / glow.
+      const base = palette[(rowIdx + 3) % len]!;
+      return lighten(base, 0.35);
+    }
+    case 'indestructible':
+      return 0x556688; // always steel-gray
+    default:
+      return palette[rowIdx % len]!;
+  }
 }
 
 /**

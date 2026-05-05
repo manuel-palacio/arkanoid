@@ -72,26 +72,29 @@ export const Tuning = {
     fieldOffsetY: 80,
     flashMs: 70,
     /**
-     * Row-cycled rainbow used for standard ("S") bricks when a level has
-     * no palette override. Picks colors by row index so a level full of
-     * S bricks reads as horizontal color stripes rather than a single
-     * cold-blue field. 14 entries — one per row even at max density.
+     * Row-cycled rainbow used by LevelSystem.defaultRowColor for ALL
+     * brick kinds (with offsets + lighten/darken per archetype). 14
+     * vivid, high-saturation candy hues — one per possible row at max
+     * density. Standard bricks read this slot directly; tough is
+     * offset +2 and darkened, hard offset +4 and darker, special
+     * offset +3 and lightened. Indestructible ignores the palette and
+     * uses a flat steel color.
      */
     rainbowRowColors: [
-      0xff5d6c, // 0  red
-      0xff9f43, // 1  orange
-      0xffd23a, // 2  yellow
-      0x4af2a1, // 3  mint green
-      0x4ad6ff, // 4  sky blue
-      0xb96bff, // 5  purple
-      0xff6eb4, // 6  pink
-      0xff7043, // 7  deep orange
-      0xffe066, // 8  gold
-      0x69ff94, // 9  lime
-      0x40c4ff, // 10 light blue
-      0xce93d8, // 11 lavender
-      0xf48fb1, // 12 rose
-      0xa5d6a7, // 13 pale green
+      0xff2244, // 0  cherry red
+      0xff5500, // 1  tangerine orange
+      0xffcc00, // 2  lemon yellow
+      0x44dd00, // 3  lime green
+      0x00ccaa, // 4  mint teal
+      0x0099ff, // 5  blueberry blue
+      0xaa33ff, // 6  grape purple
+      0xff44aa, // 7  bubblegum pink
+      0xff7700, // 8  deep orange
+      0xffee33, // 9  golden yellow
+      0x33ffaa, // 10 seafoam
+      0x3399ff, // 11 sky blue
+      0xdd55ff, // 12 violet
+      0xff3366, // 13 rose red
     ],
   },
 
