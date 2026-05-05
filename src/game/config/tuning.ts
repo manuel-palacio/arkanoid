@@ -173,38 +173,50 @@ export const Tuning = {
     max: 6,
   },
 
-  // Anti-stall — keeps the field lively whenever progress slows, NOT
-  // just at endgame. Three escalating tiers from gentle to active:
-  //   1. nudge       — rotate ball angle toward vertical
-  //   2. rescue drop — force-spawn a multi-ball power-up
-  //   3. speed assist— gently bump speed (still endgame-only)
+  // Anti-stall — the game must NEVER feel slow or tedious. Five layers
+  // from "barely noticeable" to "the run is over":
+  //   1. continuous speed buildup — starts after 3s, ramps urgency
+  //   2. nudge — rotate ball angle toward vertical (more aggressive)
+  //   3. double-tap nudge — second nudge if first didn't escape
+  //   4. rescue drop — force-spawn a multi-ball power-up
+  //   5. danger clock — a 5s countdown after 3s no-break; ball is
+  //      auto-killed if it expires (player keeps playing, just lose
+  //      a ball — same flow as a regular drop)
   antiStall: {
     /** below this |vy/speed|, count toward "stuck" */
     verticalFractionThreshold: 0.3,
-    /** consecutive low-vy frames before nudging (~1.0 s @ 60 fps) */
-    stuckFramesTrigger: 60,
+    /** consecutive low-vy frames before nudging (~0.5 s @ 60 fps) */
+    stuckFramesTrigger: 30,
     /** degrees the velocity rotates toward vertical when nudged */
-    nudgeDeg: 18,
+    nudgeDeg: 28,
+    /** anti-stuck nudge gate: minimum no-break time before engaging */
+    nudgeMinNoBreakMs: 1200,
     /**
-     * Anti-stuck nudge waits for at least this much "no progress" time
-     * before considering a low-vy pattern as actually stuck. Prevents
-     * mid-play interruption when the player is breaking bricks but
-     * happens to have a transiently flat trajectory.
+     * Frames after a nudge during which we re-check the trajectory.
+     * If still flat at the end of this window, fire a stronger
+     * second nudge (1.5× the regular angle).
      */
-    nudgeMinNoBreakMs: 2500,
+    postNudgeWatchFrames: 10,
+    /** rescue (force-spawn multi-ball) trigger time */
+    rescueDropAfterMs: 3500,
+    /** ms since last brick break before continuous speed buildup */
+    speedAssistAfterMs: 4000,
+    /** alive bricks ≤ this triggers speed assist (mid-game stalls too) */
+    speedAssistBrickCount: 12,
+    /** px/s ball-speed bump per frame while speed assist is active */
+    speedAssistPerFrame: 3.5,
     /**
-     * Force-spawn a multi-ball power-up when the player has been
-     * scratching at the field for this long without a brick break.
-     * Drops from a random alive brick. Only fires while exactly one
-     * ball is in play and no power-up is already falling.
+     * Continuous urgency speed buildup: after this many ms with no
+     * brick break, every frame adds (stallSeconds × ramp) px/s of
+     * ball speed, capped by ball.maxSpeed.
      */
-    rescueDropAfterMs: 6000,
-    /** ms since last brick break before applying gentle endgame speedup */
-    speedAssistAfterMs: 8000,
-    /** alive bricks ≤ this triggers speed assist */
-    speedAssistBrickCount: 4,
-    /** px/s nudge added each frame while speed assist is active */
-    speedAssistPerFrame: 2,
+    urgencyStartMs: 3000,
+    urgencyRampPerSec: 1.5,
+    urgencyMaxPerFrame: 20,
+    /** Show the danger clock once the player has been stuck this long. */
+    dangerShowAfterMs: 3000,
+    /** Visible countdown duration before auto-killing the ball. */
+    dangerDurationMs: 5000,
   },
 
   // Effects

@@ -41,6 +41,8 @@ export const Events = {
   GameOver: 'game-over',
   GameVictory: 'game-victory',
   Combo: 'combo',
+  /** 0 = clear, 0..1 = countdown progress, fired only by GameScene. */
+  DangerLevel: 'danger-level',
 } as const;
 
 export function createPhaserConfig(parent: HTMLElement): Phaser.Types.Core.GameConfig {

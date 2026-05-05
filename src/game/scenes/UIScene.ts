@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { Events, GAME_WIDTH, RegistryKeys, SceneKeys } from '../config/gameConfig';
+import { Events, GAME_HEIGHT, GAME_WIDTH, RegistryKeys, SceneKeys } from '../config/gameConfig';
 import { Tuning } from '../config/tuning';
 import { POWERUPS } from '../data/powerUps';
 import { comboFlash } from '../systems/EffectsSystem';
@@ -23,6 +23,8 @@ export class UIScene extends Phaser.Scene {
   private floatingPoints: Phaser.GameObjects.Text[] = [];
   private muteIcon!: Phaser.GameObjects.Text;
   private musicIcon!: Phaser.GameObjects.Text;
+  private dangerText!: Phaser.GameObjects.Text;
+  private dangerTween?: Phaser.Tweens.Tween;
 
   constructor() {
     super(SceneKeys.UI);
@@ -82,12 +84,31 @@ export class UIScene extends Phaser.Scene {
     });
 
     const game = this.scene.get(SceneKeys.Game);
+    // Danger clock — large red countdown that appears when the
+    // player's been stalled for ~3 s. Pulses faster + redder as the
+    // clock runs out. Sits dead-center of the playfield; pointer-
+    // through-able (depth 200, no setInteractive).
+    this.dangerText = this.add
+      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2, '', {
+        fontFamily: 'Inter, system-ui, sans-serif',
+        fontSize: '96px',
+        fontStyle: '900',
+        color: '#ff4444',
+        stroke: '#7a0000',
+        strokeThickness: 6,
+      })
+      .setOrigin(0.5)
+      .setAlpha(0)
+      .setDepth(200)
+      .setShadow(0, 0, '#ff0000', 24, true, true);
+
     game.events.on(Events.ScoreChanged, this.onScoreChanged, this);
     game.events.on(Events.LivesChanged, this.onLivesChanged, this);
     game.events.on(Events.LevelChanged, this.onLevelChanged, this);
     game.events.on(Events.PowerUpActivated, this.onPowerUpsChanged, this);
     game.events.on(Events.PowerUpExpired, this.onPowerUpsChanged, this);
     game.events.on(Events.Combo, this.onCombo, this);
+    game.events.on(Events.DangerLevel, this.onDangerLevel, this);
 
     const hi = this.registry.get(RegistryKeys.HighScore) as number;
     this.highText.setText(`HI  ${formatScore(hi)}`);
@@ -99,6 +120,7 @@ export class UIScene extends Phaser.Scene {
       game.events.off(Events.PowerUpActivated, this.onPowerUpsChanged, this);
       game.events.off(Events.PowerUpExpired, this.onPowerUpsChanged, this);
       game.events.off(Events.Combo, this.onCombo, this);
+      game.events.off(Events.DangerLevel, this.onDangerLevel, this);
     });
   }
 
@@ -156,6 +178,37 @@ export class UIScene extends Phaser.Scene {
         .setOrigin(0, 0.5);
       this.powerStrip.add([bg, t, bar]);
     });
+  }
+
+  /**
+   * Show / hide the danger countdown. `level` 0 hides it; 0..1 shows
+   * the seconds remaining (rounded up). Starts at 5, falls to 1 just
+   * before the kill signal fires from the host.
+   */
+  private onDangerLevel(level: number): void {
+    if (level <= 0) {
+      if (this.dangerText.alpha > 0) {
+        this.dangerText.setAlpha(0);
+        this.dangerTween?.stop();
+        this.dangerTween = undefined;
+      }
+      return;
+    }
+    const totalSec = Math.max(1, Math.round(Tuning.antiStall.dangerDurationMs / 1000));
+    const remaining = Math.max(1, Math.ceil((1 - level) * totalSec));
+    this.dangerText.setText(`⚡ ${remaining}`);
+    if (this.dangerText.alpha === 0) {
+      this.dangerText.setAlpha(1);
+      this.dangerText.setScale(1);
+      this.dangerTween = this.tweens.add({
+        targets: this.dangerText,
+        scale: { from: 1, to: 1.18 },
+        duration: 420,
+        yoyo: true,
+        repeat: -1,
+        ease: 'sine.inOut',
+      });
+    }
   }
 
   /** Update the music button glyph + alpha to reflect the current state. */

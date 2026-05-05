@@ -477,6 +477,7 @@ export class GameScene extends Phaser.Scene {
     this.timeSinceLastBrickDestroyed += deltaMs;
     this.timeSinceLastRescue += deltaMs;
     this.maybeRescueDrop();
+    this.tickDangerClock(timeMs);
 
     for (const ball of this.balls) {
       if (ball.isAttached) {
@@ -546,13 +547,12 @@ export class GameScene extends Phaser.Scene {
 
       // Stall guard. Engages whenever the player has stopped breaking
       // bricks for a few seconds AND the ball settles into a near-
-      // horizontal pattern — regardless of brick count. Nudge feels
-      // intentional: ball flashes white + a soft wall sfx plays.
+      // horizontal pattern — regardless of brick count.
       if (this.antiStuck.update(ball, this.timeSinceLastBrickDestroyed)) {
         ball.onWallBounce(this);
         getAudio().playSfx('wall', 0.4);
       }
-      this.applyEndgameSpeedAssist(ball);
+      this.applyUrgencyBuildup(ball, dt);
 
       ball.updateTrail(timeMs);
     }
@@ -845,10 +845,39 @@ export class GameScene extends Phaser.Scene {
     if (brick.isBreakable()) {
       this.bricksRemaining = Math.max(0, this.bricksRemaining - 1);
       this.timeSinceLastBrickDestroyed = 0;
+      this.antiStuck.resetDangerClock();
+      this.events.emit(Events.DangerLevel, 0);
       this.updateTensionMode();
       this.updateMusicIntensity();
       if (this.bricksRemaining === 0) this.completeLevel();
     }
+  }
+
+  /**
+   * Drive the visible danger clock. If it elapses, the active ball is
+   * killed (same flow as falling off the floor). The countdown resets
+   * the moment any brick breaks — see handleBrickDestroyed.
+   */
+  private tickDangerClock(nowMs: number): void {
+    if (this.gameOver || this.levelTransitioning) return;
+    if (this.bricksRemaining <= 0) return;
+    if (this.balls.length === 0 || this.balls.every((b) => b.isAttached)) {
+      this.antiStuck.resetDangerClock();
+      this.events.emit(Events.DangerLevel, 0);
+      return;
+    }
+    const danger = this.antiStuck.getDangerLevel(this.timeSinceLastBrickDestroyed, nowMs);
+    if (danger === -1) {
+      // Kill the most-recent active ball. The regular life-loss flow
+      // takes over from there (respawn or game over).
+      const victim = this.balls.find((b) => !b.isAttached);
+      if (victim) this.onBallLost(victim);
+      this.antiStuck.resetDangerClock();
+      this.events.emit(Events.DangerLevel, 0);
+      this.timeSinceLastBrickDestroyed = 0; // give the player a fresh start
+      return;
+    }
+    this.events.emit(Events.DangerLevel, danger);
   }
 
   /**
@@ -884,17 +913,21 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Late-game speed assist. When only a couple of bricks remain and no
-   * brick has broken for a while, gently bump the ball's speed each
-   * frame toward an alive-bricks-dependent target. bumpSpeed clamps to
-   * Tuning.ball.maxSpeed so this can't compound past the design ceiling.
+   * Urgency speed buildup. Continuous (per-frame) ramp once the player
+   * has been stalled for `urgencyStartMs`. Speed gain per second
+   * scales linearly with how long they've been stalled, capped per-
+   * frame so a 30 s stall doesn't suddenly ping-pong the ball at max
+   * speed. Replaces the previous endgame-only speed assist — stalls
+   * with 12 bricks remaining now get the same momentum nudge stalls
+   * with 2 bricks did.
    */
-  private applyEndgameSpeedAssist(ball: Ball): void {
+  private applyUrgencyBuildup(ball: Ball, dtSec: number): void {
     const cfg = Tuning.antiStall;
+    if (this.timeSinceLastBrickDestroyed < cfg.urgencyStartMs) return;
     if (this.bricksRemaining > cfg.speedAssistBrickCount) return;
-    if (this.timeSinceLastBrickDestroyed < cfg.speedAssistAfterMs) return;
-    const target = Tuning.ball.baseSpeed * (1 + (5 - this.bricksRemaining) * 0.08);
-    if (ball.speed < target) ball.bumpSpeed(cfg.speedAssistPerFrame);
+    const stallSec = (this.timeSinceLastBrickDestroyed - cfg.urgencyStartMs) / 1000;
+    const ramp = Math.min(stallSec * cfg.urgencyRampPerSec, cfg.urgencyMaxPerFrame);
+    if (ramp > 0) ball.bumpSpeed(ramp * dtSec * 60);
   }
 
   /** Pick a music intensity level from current game state. */
