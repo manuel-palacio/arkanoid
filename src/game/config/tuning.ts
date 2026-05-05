@@ -55,6 +55,13 @@ export const Tuning = {
     trailColor: 0x9bf2ff,
     /** capped x|y velocity for tunneling guard substep computation */
     substepMinPixels: 5,
+    /**
+     * CHARGED mode threshold: consecutive breakable-brick hits during
+     * normal-mode play before the ball auto-enters 'charged' (next
+     * brick hit deals 3× damage). Resets on life lost / level start /
+     * any other power-up mode being active.
+     */
+    chargedThreshold: 10,
   },
 
   // Bricks — 13 cols at 36×14 with 2px gaps fits 540 wide cleanly.

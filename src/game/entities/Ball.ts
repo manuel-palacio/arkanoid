@@ -1,12 +1,14 @@
 import Phaser from 'phaser';
 import { Tuning } from '../config/tuning';
 import { CANDY } from '../config/palette';
+import type { BallMode } from '../types';
 
 /** Multi-ball extras cycle through this palette in order. */
 export const MULTIBALL_TINTS: number[] = [CANDY.cherry, CANDY.lime, CANDY.grape];
 
-/** Tint applied while SMASH is active — fiery so the player notices. */
 const THROUGH_TINT = 0xff5500;
+const GHOST_TINT = 0x88ccff;
+const CHARGED_TINT = 0xffffff;
 
 /**
  * Ball entity. We use Arcade Physics for body bookkeeping but drive velocity
@@ -29,10 +31,14 @@ export class Ball {
   private glowTrail: Phaser.GameObjects.Particles.ParticleEmitter;
   /** unique tint for distinguishing balls in multi-ball */
   readonly tint: number;
-  /** SMASH power-up: ball passes through bricks dealing damage without bouncing. */
-  inThroughMode = false;
-  /** HUGE power-up: visual + body scale doubled. */
-  inBigMode = false;
+  /**
+   * Current ball behavioral mode. Mutually exclusive — setMode replaces
+   * the previous mode. Modes drive visuals AND collision/physics
+   * behavior. Magnet and fast are intentionally NOT modes — they're
+   * separate toggles that compose with any mode.
+   */
+  private _mode: BallMode = 'normal';
+  private _modeTimer: Phaser.Time.TimerEvent | null = null;
   /** MAGNET power-up: subtle pull toward remaining brick centroid each frame. */
   inMagnetMode = false;
   /** TURBO power-up: speed multiplier applied; affects HUD + score multiplier. */
@@ -166,41 +172,112 @@ export class Ball {
     });
   }
 
-  /** The "current" tint that should be applied — through-mode overrides. */
+  /** The "current" tint that should be applied based on mode. */
   private activeTint(): number {
-    return this.inThroughMode ? THROUGH_TINT : this.tint;
+    switch (this._mode) {
+      case 'through':
+        return THROUGH_TINT;
+      case 'ghost':
+        return GHOST_TINT;
+      case 'charged':
+        return CHARGED_TINT;
+      case 'big':
+      case 'normal':
+      default:
+        return this.tint;
+    }
   }
 
-  // ---------- Power-up state setters ----------
+  // ---------- BallMode API ----------
 
-  setThroughMode(on: boolean): void {
-    this.inThroughMode = on;
-    this.sprite.setTint(this.activeTint());
+  get mode(): BallMode {
+    return this._mode;
   }
 
   /**
-   * HUGE: scale visual + body. We pass the ball radius to setCircle so the
-   * Arcade body keeps its center on the sprite center and collisions match
-   * the bigger visual. setCircle's offsets default to 0,0 which Phaser
-   * interprets relative to the sprite's top-left in untransformed (texture)
-   * coordinates — for a centered circle texture this places the body
-   * correctly.
+   * Switch the ball to a new mode. Optional `durationMs` schedules an
+   * automatic revert to 'normal' — pass undefined to let the caller
+   * (typically GameScene's active power-up tracker) drive expiration
+   * via clearMode(). Setting the same mode again resets any pending
+   * timer.
    */
-  setBigMode(on: boolean): void {
-    this.inBigMode = on;
-    const scale = on ? Tuning.powerupEffects.bigScale : 1;
-    this.sprite.setScale(scale);
-    const body = this.sprite.body as Phaser.Physics.Arcade.Body | null;
-    if (body) {
-      const r = Tuning.ball.radius * scale;
-      // Re-center: setCircle's default offset is (0,0) which assumes the
-      // texture is exactly 2r×2r. Our texture has +4px transparent halo,
-      // so a manual offset keeps the body centered as scale changes.
-      const halfTexture = ((Tuning.ball.radius + 4) * scale * 2) / 2;
-      const offset = halfTexture - r;
-      body.setCircle(r, offset, offset);
+  setMode(mode: BallMode, scene: Phaser.Scene, durationMs?: number): void {
+    this._modeTimer?.remove();
+    this._modeTimer = null;
+    this._mode = mode;
+    this.applyModeVisuals();
+    if (durationMs && mode !== 'normal') {
+      this._modeTimer = scene.time.delayedCall(durationMs, () => {
+        if (this._mode === mode) {
+          this._mode = 'normal';
+          this.applyModeVisuals();
+        }
+      });
     }
   }
+
+  /** Revert to 'normal' mode immediately; cancels any pending timer. */
+  clearMode(): void {
+    this._modeTimer?.remove();
+    this._modeTimer = null;
+    this._mode = 'normal';
+    this.applyModeVisuals();
+  }
+
+  /**
+   * Apply the visual + body changes for the current mode. Called
+   * whenever the mode changes, and is idempotent — every call resets
+   * scale/alpha/body radius to the baseline before re-applying the
+   * active mode's overrides.
+   */
+  private applyModeVisuals(): void {
+    const sp = this.sprite;
+    const body = sp.body as Phaser.Physics.Arcade.Body | null;
+    // Baseline (matches default 'normal' state).
+    sp.setScale(1);
+    sp.setAlpha(1);
+    sp.setTint(this.tint);
+    if (body) this.setBodyForRadius(body, Tuning.ball.radius);
+
+    switch (this._mode) {
+      case 'through':
+        sp.setTint(THROUGH_TINT);
+        this.glowTrail.setParticleTint(THROUGH_TINT);
+        break;
+      case 'big': {
+        const scale = Tuning.powerupEffects.bigScale;
+        sp.setScale(scale);
+        if (body) this.setBodyForRadius(body, Tuning.ball.radius * scale, scale);
+        break;
+      }
+      case 'ghost':
+        sp.setAlpha(0.45);
+        sp.setTint(GHOST_TINT);
+        this.glowTrail.setParticleTint(GHOST_TINT);
+        break;
+      case 'charged':
+        sp.setTint(CHARGED_TINT);
+        this.glowTrail.setParticleTint(CHARGED_TINT);
+        break;
+      case 'normal':
+      default:
+        this.glowTrail.setParticleTint(this.tint);
+        break;
+    }
+  }
+
+  /**
+   * Resize the Arcade body to a circle of radius `r`. Our ball texture
+   * has a 4 px transparent halo around the actual sphere, so the body
+   * needs an offset to stay centered as the sprite scales.
+   */
+  private setBodyForRadius(body: Phaser.Physics.Arcade.Body, r: number, spriteScale = 1): void {
+    const halfTexture = (Tuning.ball.radius + 4) * spriteScale;
+    const offset = halfTexture - r;
+    body.setCircle(r, offset, offset);
+  }
+
+  // ---------- Other ball-state toggles (not modes) ----------
 
   setMagnetMode(on: boolean): void {
     this.inMagnetMode = on;
@@ -210,10 +287,9 @@ export class Ball {
     this.inFastMode = on;
   }
 
-  /** Reset all power-up state (level start / life lost). */
+  /** Reset every transient ball state (level start / life lost). */
   resetPowerStates(): void {
-    if (this.inBigMode) this.setBigMode(false);
-    if (this.inThroughMode) this.setThroughMode(false);
+    this.clearMode();
     this.inMagnetMode = false;
     this.inFastMode = false;
   }

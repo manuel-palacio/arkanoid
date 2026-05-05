@@ -1,5 +1,12 @@
 export type Vec2 = { x: number; y: number };
 
+/**
+ * Behavioral state for the ball. Mutually exclusive — applying a new
+ * mode replaces the previous. Magnet and fast are intentionally NOT
+ * modes (they're independent toggles that compose with any mode).
+ */
+export type BallMode = 'normal' | 'through' | 'big' | 'ghost' | 'charged';
+
 export type BrickKind =
   | 'standard'
   | 'tough'

@@ -85,6 +85,12 @@ export class GameScene extends Phaser.Scene {
   private timeSinceLastRescue = Number.POSITIVE_INFINITY;
   /** BOMB power-up: next brick hit detonates a 3×3 area. */
   private bombArmed = false;
+  /**
+   * CHARGED mode counter: consecutive breakable-brick hits during normal
+   * play. Hits while a power-up mode is active don't count (those are
+   * already a power state). Resets on life lost / level load.
+   */
+  private consecutiveBrickHits = 0;
 
   private celebrateNearMiss(x: number): void {
     if (this.time.now > this.nearMissResetAt) {
@@ -299,6 +305,7 @@ export class GameScene extends Phaser.Scene {
     this.timeSinceLastBrickDestroyed = 0;
     this.timeSinceLastRescue = Number.POSITIVE_INFINITY;
     this.bombArmed = false;
+    this.consecutiveBrickHits = 0;
     // Reset music to baseline tempo for the new field.
     getAudio().setMusicIntensity('normal');
 
@@ -611,12 +618,15 @@ export class GameScene extends Phaser.Scene {
       }
       // SMASH (through-mode): pass through breakable bricks without
       // reflecting. Indestructibles still bounce so the ball can never
-      // exit the playfield. We `return true` so the substep stops and
-      // the next substep advances forward — multi-hit bricks take
-      // damage on each substep until they die.
-      if (ball.inThroughMode && brick.isBreakable()) {
+      // exit the playfield.
+      if (ball.mode === 'through' && brick.isBreakable()) {
         this.onBrickHit(brick, ball);
         return true;
+      }
+      // GHOST: pass through indestructible bricks (the rest still
+      // collide normally).
+      if (ball.mode === 'ghost' && !brick.isBreakable()) {
+        return false;
       }
       // Reflect. Capture pre-reflection velocity so we can detect which
       // axis flipped *after* writing the new velocity to the ball — the
@@ -671,12 +681,23 @@ export class GameScene extends Phaser.Scene {
   }
 
   private onBrickHit(brick: Brick, ball: Ball): void {
-    // BOMB: arm consumed on first contact with a breakable brick. Damages
-    // every brick in a 3×3 grid centered on the hit, then resolves the
-    // hit normally so the source brick still goes down.
+    // BOMB: arm consumed on first contact with a breakable brick.
     if (this.bombArmed && brick.isBreakable()) {
       this.bombArmed = false;
       this.detonateBomb(brick, ball);
+      return;
+    }
+    // CHARGED: deal 3 hits in a single contact, then revert to normal.
+    // One-shots single-hit bricks; takes Tough/Hard down in one swing.
+    if (ball.mode === 'charged' && brick.isBreakable()) {
+      ball.clearMode();
+      let destroyed = false;
+      for (let i = 0; i < 3 && !destroyed; i++) {
+        const r = brick.hit(this);
+        if (r.destroyed) destroyed = true;
+      }
+      if (destroyed) this.handleBrickDestroyed(brick, ball);
+      else getAudio().playSfx('brickHit', 0.7);
       return;
     }
     const result = brick.hit(this);
@@ -685,6 +706,37 @@ export class GameScene extends Phaser.Scene {
     } else {
       getAudio().playSfx('brickHit', 0.5);
     }
+    // CHARGED rally counter: only count hits during plain 'normal' mode
+    // so power-up streaks don't pre-empt the rally reward. Each ball
+    // contributes — multi-ball lets two players-worth of hits stack.
+    if (ball.mode === 'normal' && brick.isBreakable()) {
+      this.consecutiveBrickHits += 1;
+      if (this.consecutiveBrickHits >= Tuning.ball.chargedThreshold) {
+        this.consecutiveBrickHits = 0;
+        this.activateCharged();
+      }
+    }
+  }
+
+  /**
+   * Skill reward: 10 consecutive brick hits during normal play promote
+   * every "normal" ball to CHARGED mode. We don't clobber balls that
+   * are mid-power (through/big/ghost) so the player doesn't lose an
+   * active boost to the charged consumption.
+   */
+  private activateCharged(): void {
+    let promoted = 0;
+    for (const b of this.balls) {
+      if (b.mode === 'normal') {
+        b.setMode('charged', this);
+        promoted += 1;
+      }
+    }
+    if (promoted === 0) return;
+    floatingPoints(this, GAME_WIDTH / 2, 220, 'CHARGED!', '#ffffff', 24);
+    comboFlash(this, 0xffffff, 0.32);
+    getAudio().playSfx('powerupGet', 0.8);
+    haptic.bump();
   }
 
   /**
@@ -930,6 +982,7 @@ export class GameScene extends Phaser.Scene {
     this.paddle.setSticky(false);
     this.paddle.setGhostShield(false);
     this.bombArmed = false;
+    this.consecutiveBrickHits = 0;
     this.active = [];
     this.events.emit(Events.PowerUpExpired, null);
     this.spawnBallOnPaddle();
@@ -1112,11 +1165,11 @@ export class GameScene extends Phaser.Scene {
         this.startTimed(kind, Tuning.powerups.durations.fast);
         break;
       case 'through':
-        this.balls.forEach((b) => b.setThroughMode(true));
+        this.balls.forEach((b) => b.setMode('through', this));
         this.startTimed(kind, Tuning.powerups.durations.through);
         break;
       case 'big':
-        this.balls.forEach((b) => b.setBigMode(true));
+        this.balls.forEach((b) => b.setMode('big', this));
         this.startTimed(kind, Tuning.powerups.durations.big);
         break;
       case 'magnet':
@@ -1233,10 +1286,14 @@ export class GameScene extends Phaser.Scene {
         });
         break;
       case 'through':
-        this.balls.forEach((b) => b.setThroughMode(false));
+        this.balls.forEach((b) => {
+          if (b.mode === 'through') b.clearMode();
+        });
         break;
       case 'big':
-        this.balls.forEach((b) => b.setBigMode(false));
+        this.balls.forEach((b) => {
+          if (b.mode === 'big') b.clearMode();
+        });
         break;
       case 'magnet':
         this.balls.forEach((b) => b.setMagnetMode(false));
