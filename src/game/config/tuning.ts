@@ -129,6 +129,22 @@ export const Tuning = {
     suppressRepeats: true,
   },
 
+  // Spawner enemies (released by 'G' bricks on first hit).
+  enemies: {
+    /** Hard cap on simultaneous on-screen enemies. */
+    maxActive: 3,
+    /** Constant downward drift, px/s. */
+    fallSpeed: 90,
+    /** Sine waver amplitude on x, in px. */
+    waverAmplitude: 14,
+    /** Sine waver angular velocity, rad/s. */
+    waverFreq: 1.2,
+    /** Collision/sprite radius. */
+    radius: 11,
+    /** Score awarded on kill (ball or laser). */
+    score: 250,
+  },
+
   // Power-up effect tuning (the bits that aren't durations).
   powerupEffects: {
     /** SMASH ball speed multiplier so the ball still reaches the top wall in a

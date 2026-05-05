@@ -31,6 +31,8 @@ export class Brick {
    * the warden dies (its `alive` flag flips → check returns false).
    */
   wardedBy: Brick | null = null;
+  /** SPAWNER bookkeeping — set true after the first hit releases an enemy. */
+  hasReleasedSpawn = false;
 
   /** Effective color (palette override, else candy color for kind). */
   readonly color: number;

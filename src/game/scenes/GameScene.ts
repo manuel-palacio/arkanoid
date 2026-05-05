@@ -3,6 +3,7 @@ import { Events, GAME_HEIGHT, GAME_WIDTH, RegistryKeys, SceneKeys } from '../con
 import { Tuning } from '../config/tuning';
 import { Ball, MULTIBALL_TINTS } from '../entities/Ball';
 import { Brick } from '../entities/Brick';
+import { Enemy } from '../entities/Enemy';
 import { Paddle } from '../entities/Paddle';
 import { PowerUp } from '../entities/PowerUp';
 import { Projectile } from '../entities/Projectile';
@@ -59,6 +60,8 @@ export class GameScene extends Phaser.Scene {
   private bricksRemaining = 0;
   private powerups: PowerUp[] = [];
   private projectiles: Projectile[] = [];
+  /** Spawner-released enemies, capped at Tuning.enemies.maxActive. */
+  private enemies: Enemy[] = [];
   private active: ActiveTimedPU[] = [];
   private score!: ScoreSystem;
   private levelIndex = 0;
@@ -236,6 +239,7 @@ export class GameScene extends Phaser.Scene {
       this.bricks.forEach((b) => b.destroy());
       this.powerups.forEach((p) => p.destroy());
       this.projectiles.forEach((p) => p.destroy());
+      this.enemies.forEach((e) => e.destroy());
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('blur', onBlur);
       this.touchUi?.unmount();
@@ -263,12 +267,81 @@ export class GameScene extends Phaser.Scene {
     this.paddle.update();
     this.tickBalls(time, delta);
     this.tickBricks(delta);
+    this.tickEnemies(time, delta);
     this.tickPowerups();
     this.tickProjectiles(time);
     this.tickActivePowerUps(delta);
     this.tickTension(time);
     this.drawAimLine();
     if (this.debug) this.drawDebug();
+  }
+
+  /**
+   * Update each enemy + check ball / projectile / floor collisions.
+   * Enemies are awarded `Tuning.enemies.score` when killed by a ball or
+   * laser. Falling off the floor is silent — no penalty, no points.
+   */
+  private tickEnemies(timeMs: number, deltaMs: number): void {
+    if (this.enemies.length === 0) return;
+    const dead: Enemy[] = [];
+    for (const e of this.enemies) {
+      if (!e.alive) {
+        dead.push(e);
+        continue;
+      }
+      e.update(deltaMs, timeMs);
+      // Off-floor — silent removal.
+      if (e.screenY > GAME_HEIGHT + 30) {
+        e.destroy();
+        dead.push(e);
+        continue;
+      }
+      // Ball hit: any ball within (enemy.radius + ball.radius) kills it.
+      let killed = false;
+      for (const b of this.balls) {
+        if (b.isAttached) continue;
+        const dx = b.x - e.x;
+        const dy = b.y - e.screenY;
+        const r = e.radius + b.radius;
+        if (dx * dx + dy * dy <= r * r) {
+          this.killEnemy(e);
+          dead.push(e);
+          killed = true;
+          break;
+        }
+      }
+      if (killed) continue;
+      // Laser hit.
+      for (const p of this.projectiles) {
+        if (!p.alive) continue;
+        const dx = p.x - e.x;
+        const dy = p.y - e.screenY;
+        if (Math.abs(dx) <= e.radius && Math.abs(dy) <= e.radius + 6) {
+          this.killEnemy(e);
+          dead.push(e);
+          p.destroy();
+          break;
+        }
+      }
+    }
+    if (dead.length) this.enemies = this.enemies.filter((e) => !dead.includes(e));
+  }
+
+  private killEnemy(enemy: Enemy): void {
+    candyBurst(this, enemy.x, enemy.screenY, 0xff66ff);
+    getAudio().playSfx('brickBreak', 0.6);
+    const cfg = Tuning.enemies;
+    const { points } = this.score.brickBroken(cfg.score, this.time.now, this.computeScoreMul());
+    this.events.emit(Events.ScoreChanged, this.score.score, this.score.highScore, points);
+    floatingPoints(this, enemy.x, enemy.screenY - 10, `+${points}`, '#ff66ff', 16);
+    enemy.destroy();
+  }
+
+  /** Spawn an enemy from a spawner brick, capped at Tuning.enemies.maxActive. */
+  private spawnEnemyFrom(brick: Brick): void {
+    if (this.enemies.length >= Tuning.enemies.maxActive) return;
+    const enemy = new Enemy(this, brick.x, brick.y + Tuning.bricks.height / 2 + 6);
+    this.enemies.push(enemy);
   }
 
   /**
@@ -314,9 +387,11 @@ export class GameScene extends Phaser.Scene {
     this.bricks.forEach((b) => b.destroy());
     this.powerups.forEach((p) => p.destroy());
     this.projectiles.forEach((p) => p.destroy());
+    this.enemies.forEach((e) => e.destroy());
     this.bricks = [];
     this.powerups = [];
     this.projectiles = [];
+    this.enemies = [];
     this.active = [];
     this.tensionActive = false;
     this.tensionVignette?.destroy();
@@ -726,6 +801,17 @@ export class GameScene extends Phaser.Scene {
       this.detonateBomb(brick, ball);
       return;
     }
+    // SPAWNER: first hit releases an enemy (capped). The brick still
+    // takes the hit normally — second hit destroys it (and the enemy
+    // is removed once the brick dies, see handleBrickDestroyed).
+    if (
+      brick.archetype.kind === 'spawner' &&
+      !brick.hasReleasedSpawn &&
+      brick.hp === brick.archetype.hits
+    ) {
+      brick.hasReleasedSpawn = true;
+      this.spawnEnemyFrom(brick);
+    }
     // CHARGED: deal 3 hits in a single contact, then revert to normal.
     // One-shots single-hit bricks; takes Tough/Hard down in one swing.
     if (ball.mode === 'charged' && brick.isBreakable()) {
@@ -889,6 +975,18 @@ export class GameScene extends Phaser.Scene {
       this.updateTensionMode();
       this.updateMusicIntensity();
       if (this.bricksRemaining === 0) this.completeLevel();
+    }
+
+    // SPAWNER: when the brick dies, its released enemy goes with it.
+    // Find the first alive enemy attached to this brick (we don't
+    // track ownership tightly — just reap one at random; player gets
+    // points for it via the regular kill path).
+    if (brick.archetype.kind === 'spawner' && brick.hasReleasedSpawn) {
+      const victim = this.enemies.find((e) => e.alive);
+      if (victim) {
+        this.killEnemy(victim);
+        this.enemies = this.enemies.filter((e) => e !== victim);
+      }
     }
   }
 
