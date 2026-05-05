@@ -148,12 +148,14 @@ export class Brick {
     if (this.shineOverlay) targets.push(this.shineOverlay);
     this.sprite.setScale(0);
     this.shineOverlay?.setScale(0);
+    // Stagger by 8 ms so the LAST brick in a max-density 14×13 field
+    // (gridIndex ≈ 181) still finishes popping in under 1.7 s.
     scene.tweens.add({
       targets,
       scale: { from: 0, to: 1 },
       duration: 280,
       ease: 'Back.easeOut',
-      delay: gridIndex * 18,
+      delay: gridIndex * 8,
     });
   }
 

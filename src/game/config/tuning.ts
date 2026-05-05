@@ -57,31 +57,41 @@ export const Tuning = {
     substepMinPixels: 5,
   },
 
-  // Bricks — 13 cols at 36×18 with a 2px gap fits 540 wide cleanly.
+  // Bricks — 13 cols at 36×14 with 2px gaps fits 540 wide cleanly.
   // Field width = 13*36 + 12*2 = 468 + 24 = 492; canvas inside walls = 540 - 28 = 512.
-  // Centered offset = WALL + (512 - 492) / 2 = 14 + 10 = 24.
+  // Centered offset = WALL + (512 - 492) / 2 = 14 + 10 = 24. Reduced
+  // brick height (14 px) + tighter row gap (2 px) make room for 10–14
+  // rows per level so the field reads at original-Arkanoid density.
   bricks: {
     cols: 13,
-    rowGap: 3,
+    rowGap: 2,
     colGap: 2,
     width: 36,
-    height: 18,
+    height: 14,
     fieldOffsetX: 24,
-    fieldOffsetY: 90,
+    fieldOffsetY: 80,
     flashMs: 70,
     /**
      * Row-cycled rainbow used for standard ("S") bricks when a level has
      * no palette override. Picks colors by row index so a level full of
      * S bricks reads as horizontal color stripes rather than a single
-     * cold-blue field.
+     * cold-blue field. 14 entries — one per row even at max density.
      */
     rainbowRowColors: [
-      0xff5d6c, // red
-      0xff9f43, // orange
-      0xffd23a, // yellow
-      0x4af2a1, // green
-      0x4ad6ff, // blue
-      0xb96bff, // purple
+      0xff5d6c, // 0  red
+      0xff9f43, // 1  orange
+      0xffd23a, // 2  yellow
+      0x4af2a1, // 3  mint green
+      0x4ad6ff, // 4  sky blue
+      0xb96bff, // 5  purple
+      0xff6eb4, // 6  pink
+      0xff7043, // 7  deep orange
+      0xffe066, // 8  gold
+      0x69ff94, // 9  lime
+      0x40c4ff, // 10 light blue
+      0xce93d8, // 11 lavender
+      0xf48fb1, // 12 rose
+      0xa5d6a7, // 13 pale green
     ],
   },
 

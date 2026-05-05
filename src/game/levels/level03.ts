@@ -13,12 +13,17 @@ const level03: LevelDef = {
     special: 0xff7043,
   },
   rows: [
-    'TTSS.SSSSSS..',
-    '.STT.S.S.S..*',
-    '..S.SSTTS.SSI',
-    'TS..S.S.SSS..',
-    '.S.STT..S.*..',
-    'SSSST.S.S.SS*',
+    '.............',
+    '.S..S..S..S..',
+    'S.SS.SS.SS.SS',
+    '.S*S..S..S*S.',
+    'T.S.STTTS.S.T',
+    '.STISSTSSITS.',
+    'T.S.STTTS.S.T',
+    '.S*S..S..S*S.',
+    'S.SS.SS.SS.SS',
+    '.S..S..S..S..',
+    '.............',
   ],
 };
 
