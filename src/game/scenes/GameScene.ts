@@ -272,8 +272,35 @@ export class GameScene extends Phaser.Scene {
     this.tickProjectiles(time);
     this.tickActivePowerUps(delta);
     this.tickTension(time);
+    this.tickBackgroundReactivity();
     this.drawAimLine();
     if (this.debug) this.drawDebug();
+  }
+
+  /**
+   * Per-frame background modulation driven by gameplay state. Each input
+   * is derived from existing scene state — no extra bookkeeping required.
+   *   - parallax speed tracks the fastest live ball
+   *   - blob hot-shift tracks the charged-rally counter
+   *   - dust turbulence kicks in once 3+ balls are active
+   */
+  private tickBackgroundReactivity(): void {
+    if (!this.starfield) return;
+    // Parallax speed. Reach for the fastest moving ball; if all balls are
+    // attached to the paddle, fall back to baseline.
+    let maxLive = 0;
+    for (const b of this.balls) {
+      if (b.isAttached) continue;
+      const s = Math.hypot(b.vx, b.vy);
+      if (s > maxLive) maxLive = s;
+    }
+    const t = Math.min(1, maxLive / Tuning.ball.maxSpeed);
+    this.starfield.setSpeedMultiplier(0.6 + t * 1.4);
+
+    const comboProgress = Math.min(1, this.consecutiveBrickHits / Tuning.ball.chargedThreshold);
+    this.starfield.setComboProgress(comboProgress);
+
+    this.starfield.setTurbulence(this.balls.length >= 3);
   }
 
   /**
@@ -962,6 +989,13 @@ export class GameScene extends Phaser.Scene {
     getAudio().playSfx('brickBreak');
     haptic.bump();
     candyBurst(this, brick.x, brick.y, brick.color);
+    // Spawner bricks shed a second wave of magenta-purple sparks so
+    // their death reads distinctly from a regular brick — telegraphs
+    // "an enemy spot just closed" without an extra HUD message.
+    if (brick.archetype.kind === 'spawner') {
+      spark(this, brick.x, brick.y, 0xff66ff, 8);
+      spark(this, brick.x, brick.y, 0xaa44ff, 6);
+    }
     shake(this, Tuning.effects.shakeBrickDurationMs, Tuning.effects.shakeBrickIntensity);
     hitstop(this);
     const { points, chain } = this.score.brickBroken(
@@ -1141,23 +1175,15 @@ export class GameScene extends Phaser.Scene {
     if (shouldBeActive === this.tensionActive) return;
     this.tensionActive = shouldBeActive;
     if (shouldBeActive) {
-      // Red vignette overlay.
+      // Heartbeat-pulsed vignette. Color is recomputed each tick from
+      // bricksRemaining (neutral dark @ 3 → deep red @ 1) so a quick
+      // sequence of breaks reads as a tightening wash.
       this.tensionVignette = this.add
         .rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0xff1844, 0)
         .setDepth(180)
         .setBlendMode(Phaser.BlendModes.ADD);
-      this.tweens.add({
-        targets: this.tensionVignette,
-        fillAlpha: 0.12,
-        duration: 600,
-        yoyo: true,
-        repeat: -1,
-        ease: 'sine.inOut',
-      });
       this.nextHeartbeatAt = this.time.now;
-      this.starfield?.setSpeedMultiplier(2.4);
     } else if (this.tensionVignette) {
-      this.starfield?.setSpeedMultiplier(1);
       this.tweens.killTweensOf(this.tensionVignette);
       this.tweens.add({
         targets: this.tensionVignette,
@@ -1178,6 +1204,59 @@ export class GameScene extends Phaser.Scene {
       // Heartbeat cadence accelerates as bricks dwindle.
       const interval = this.bricksRemaining <= 1 ? 520 : this.bricksRemaining === 2 ? 660 : 800;
       this.nextHeartbeatAt = timeMs + interval;
+      // Pulse the vignette in sync with each beat. Color shifts toward
+      // deep red as the field empties; one-brick-left is the most
+      // saturated. Skip the fillColor mutation under reduced motion —
+      // the pulse alone communicates enough.
+      const v = this.tensionVignette;
+      if (v) {
+        // 3 → cool dark crimson 0x661022, 1 → vivid 0xff1844.
+        const palette: Record<number, number> = { 3: 0x661022, 2: 0xaa1530, 1: 0xff1844 };
+        const color = palette[Math.max(1, Math.min(3, this.bricksRemaining))] ?? 0xff1844;
+        v.setFillStyle(color, 0);
+        const peak = this.bricksRemaining <= 1 ? 0.22 : this.bricksRemaining === 2 ? 0.18 : 0.14;
+        this.tweens.killTweensOf(v);
+        this.tweens.add({
+          targets: v,
+          fillAlpha: peak,
+          duration: Math.min(180, interval / 3),
+          yoyo: true,
+          ease: 'sine.inOut',
+        });
+      }
+    }
+  }
+
+  /**
+   * Brief darkness dip + blob desaturation pulse on life loss. Reads as
+   * "the game is reacting to your stumble". Composed of two layers:
+   *   - a full-screen dark rectangle that flashes in (alpha 0.7) and
+   *     fades over 400 ms — sells the "lights got knocked out" feel.
+   *   - a 1 → 0 desat ramp on the background blobs over 600 ms — the
+   *     world goes briefly gray then reflowers in candy color.
+   */
+  private lifeLostBackgroundReact(): void {
+    const flash = this.add
+      .rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x0d0520, 0.7)
+      .setDepth(185);
+    this.tweens.add({
+      targets: flash,
+      fillAlpha: 0,
+      duration: 400,
+      ease: 'Quad.easeOut',
+      onComplete: () => flash.destroy(),
+    });
+    if (this.starfield) {
+      const sf = this.starfield;
+      sf.setDesaturate(1);
+      this.tweens.addCounter({
+        from: 1,
+        to: 0,
+        duration: 600,
+        ease: 'sine.inOut',
+        onUpdate: (tw) => sf.setDesaturate(tw.getValue() ?? 0),
+        onComplete: () => sf.setDesaturate(0),
+      });
     }
   }
 
@@ -1191,6 +1270,7 @@ export class GameScene extends Phaser.Scene {
     getAudio().playSfx('lifeLost');
     haptic.thump();
     shake(this, Tuning.effects.shakeLifeDurationMs, Tuning.effects.shakeLifeIntensity);
+    this.lifeLostBackgroundReact();
     this.updateMusicIntensity();
     if (r.livesLeft <= 0) {
       this.triggerGameOver();
@@ -1222,6 +1302,21 @@ export class GameScene extends Phaser.Scene {
     this.events.emit(Events.ScoreChanged, this.score.score, this.score.highScore, r.bonus);
     this.events.emit(Events.LevelComplete, this.levelIndex);
     getAudio().playSfx('levelComplete');
+
+    // White flash through the tension vignette before fireworks — sells
+    // the "field cleared" beat even when the player is in tension mode.
+    if (this.tensionVignette) {
+      const v = this.tensionVignette;
+      this.tweens.killTweensOf(v);
+      v.setFillStyle(0xffffff, 0);
+      this.tweens.add({
+        targets: v,
+        fillAlpha: 0.45,
+        duration: 90,
+        yoyo: true,
+        ease: 'Quad.easeOut',
+      });
+    }
 
     // Fireworks across the upper playfield.
     fireworks(this, 1400, 10);

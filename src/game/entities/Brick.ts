@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { Tuning } from '../config/tuning';
-import { BRICK_CANDY_COLORS, desaturate, lighten } from '../config/palette';
+import { BRICK_CANDY_COLORS, lighten } from '../config/palette';
 import type { BrickArchetype } from '../types';
 
 /**
@@ -17,7 +17,19 @@ export class Brick {
   hp: number;
   alive = true;
   private cracksOverlay?: Phaser.GameObjects.Image;
+  /** Currently-displayed crack tier (0 = none, 1..3). */
+  private crackTier = 0;
   private shineOverlay?: Phaser.GameObjects.Image;
+  /** Indestructibles only: subtle inner-glow halo pulse. */
+  private metalGlow?: Phaser.GameObjects.Image;
+  /** Spawner only: pulsing chevron icon centered on the brick. */
+  private iconOverlay?: Phaser.GameObjects.Image;
+  /** Invisibles only: stroke-rect silhouette drawn at proximity range. */
+  private outlineGfx?: Phaser.GameObjects.Graphics;
+  /** Invisibles only: locked to fully visible after first hit. */
+  private revealedByHit = false;
+  /** "About to pop" glow tween handle so we can stop it on heal/destroy. */
+  private aboutToPopTween?: Phaser.Tweens.Tween;
   private destroying = false;
   /** REGEN: ms since last hit; heals 1 HP every 4 s. */
   private regenAccumMs = 0;
@@ -43,17 +55,18 @@ export class Brick {
     const baseCandy = BRICK_CANDY_COLORS[archetype.kind] ?? archetype.color;
     this.color = colorOverride ?? baseCandy;
 
-    const sp = scene.physics.add.image(x, y, 'brick-candy');
+    // Indestructibles use a brushed-metal base texture so they read as
+    // immovable steel in dense grids — distinct silhouette from candy
+    // bricks even before the ball touches them.
+    const isIndestructible = archetype.kind === 'indestructible';
+    const baseTexture = isIndestructible ? 'brick-metal' : 'brick-candy';
+    const sp = scene.physics.add.image(x, y, baseTexture);
     sp.setOrigin(0.5);
     sp.setImmovable(true);
     sp.body.allowGravity = false;
     sp.setDepth(10);
     sp.body.setSize(Tuning.bricks.width, Tuning.bricks.height, true);
-    if (archetype.kind !== 'indestructible') {
-      sp.setTint(this.color);
-    } else {
-      sp.setTint(this.color);
-    }
+    sp.setTint(this.color);
     this.sprite = sp;
 
     // Specular shine overlay — only on breakable, candy-style bricks. We
@@ -65,7 +78,7 @@ export class Brick {
     // Alpha 0.45 (down from 0.8) — the gem-shine texture renders under
     // ADD blend, so even a soft gleam burns near-white if alpha is too
     // high. 0.45 keeps the highlight readable as a sheen.
-    if (archetype.kind !== 'indestructible') {
+    if (!isIndestructible) {
       this.shineOverlay = scene.add
         .image(x, y, 'gem-shine')
         .setDepth(11)
@@ -73,11 +86,62 @@ export class Brick {
         .setAlpha(0.45);
     }
 
+    // Indestructible inner-glow pulse — soft halo at very low alpha so
+    // it never reads as a target, just as "this thing is alive but
+    // can't be broken". Slow 2.4 s breathing.
+    if (isIndestructible) {
+      const halo = scene.add
+        .image(x, y, 'glow-soft')
+        .setDepth(9)
+        .setBlendMode('ADD')
+        .setTint(0xc8cdd4)
+        .setScale(Math.max(Tuning.bricks.width, Tuning.bricks.height) / 32)
+        .setAlpha(0.05);
+      this.metalGlow = halo;
+      scene.tweens.add({
+        targets: halo,
+        alpha: 0.1,
+        duration: 2400,
+        yoyo: true,
+        repeat: -1,
+        ease: 'sine.inOut',
+      });
+    }
+
+    // Spawner idle anim — pulsing chevron centered in the brick. The
+    // glow already telegraphed by the brick's tint isn't enough to
+    // distinguish it at a glance; this icon is the unambiguous read.
+    if (archetype.kind === 'spawner') {
+      const icon = scene.add
+        .image(x, y, 'brick-spawner-icon')
+        .setDepth(12)
+        .setAlpha(0.85);
+      this.iconOverlay = icon;
+      scene.tweens.add({
+        targets: icon,
+        alpha: 0.4,
+        duration: 750,
+        yoyo: true,
+        repeat: -1,
+        ease: 'sine.inOut',
+      });
+    }
+
     // INVISIBLE: starts fully hidden. Reveal/fade is driven by
-    // proximity to the ball — see update().
+    // proximity to the ball — see update(). The outline graphic is the
+    // proximity silhouette.
     if (archetype.kind === 'invisible') {
       this.sprite.setAlpha(0);
       this.shineOverlay?.setAlpha(0);
+      this.outlineGfx = scene.add.graphics().setDepth(11);
+      this.outlineGfx.lineStyle(1, this.color, 1);
+      this.outlineGfx.strokeRect(
+        x - Tuning.bricks.width / 2,
+        y - Tuning.bricks.height / 2,
+        Tuning.bricks.width,
+        Tuning.bricks.height,
+      );
+      this.outlineGfx.setAlpha(0);
     }
 
     this.playEntrance(scene);
@@ -109,33 +173,74 @@ export class Brick {
     if (this.regenAccumMs >= 4000) {
       this.regenAccumMs = 0;
       this.hp = Math.min(this.archetype.hits, this.hp + 1);
-      // Brick is healing — restore the candy tint and shed the cracks
-      // if it's back to full HP.
-      this.sprite.setTint(this.color);
-      this.shineOverlay?.setAlpha(0.45);
-      if (this.hp === this.archetype.hits) {
-        this.cracksOverlay?.destroy();
-        this.cracksOverlay = undefined;
+      const scene = this.sprite.scene;
+      // Brief white-flash heal pulse — separates a heal tick from a
+      // damage flash visually (damage flash uses a lightened tint of
+      // the candy color; heal goes whiter than that).
+      this.sprite.setTint(0xffffff);
+      this.shineOverlay?.setAlpha(0.65);
+      scene?.time.delayedCall(80, () => {
+        if (!this.alive || this.destroying) return;
+        this.sprite.setTint(this.color);
+        this.shineOverlay?.setAlpha(0.45);
+      });
+      // Floating "+" so the player understands a heal happened even if
+      // they weren't watching the HP cracks rebuild. Inlined rather
+      // than importing EffectsSystem — see file-level comment about
+      // keeping Brick.ts free of runtime Phaser.* references so the
+      // Node test environment doesn't pull in Phaser's OS init.
+      if (scene) this.spawnHealFloater(scene);
+      // Stop the about-to-pop pulse if HP is no longer 1.
+      if (this.hp > 1 && this.aboutToPopTween) {
+        this.aboutToPopTween.stop();
+        this.aboutToPopTween = undefined;
       }
+      // Step the crack overlay back down a tier as HP recovers.
+      this.applyCrackTier();
     }
   }
 
   private tickInvisible(deltaMs: number, dist: number): void {
-    const NEAR = (Tuning.bricks.width + Tuning.bricks.colGap) * 2;
+    // Permanently revealed once the ball has actually struck this brick —
+    // hiding it again would feel buggy after a confirmed hit.
+    if (this.revealedByHit) {
+      this.sprite.setAlpha(1);
+      this.shineOverlay?.setAlpha(0.45);
+      this.outlineGfx?.setAlpha(0);
+      return;
+    }
+    const NEAR = 80;
+    const SILHOUETTE = 160;
     const HOLD_MS = 2000;
+    let targetFill = 0;
+    let targetOutline = 0;
     if (dist < NEAR) {
-      // Reveal — climb to alpha 1 over ~200 ms.
-      this.revealAlpha = Math.min(1, this.revealAlpha + deltaMs / 200);
+      // Inner zone: full fill (fade in over ~200 ms via revealAlpha) +
+      // outline starts to drop out as the fill takes over.
       this.revealHoldMs = 0;
+      this.revealAlpha = Math.min(1, this.revealAlpha + deltaMs / 200);
+      targetFill = this.revealAlpha;
+      targetOutline = 0.7 * (1 - this.revealAlpha);
+    } else if (dist < SILHOUETTE) {
+      // Mid zone: silhouette only, alpha proportional to closeness.
+      this.revealHoldMs = 0;
+      const t = (SILHOUETTE - dist) / (SILHOUETTE - NEAR);
+      targetOutline = t * 0.7;
+      this.revealAlpha = Math.max(0, this.revealAlpha - deltaMs / 400);
+      targetFill = 0;
     } else {
-      // Hold for HOLD_MS after the ball drifts away, then fade.
+      // Far zone: hide everything, but only after a brief hold so a
+      // grazing pass doesn't strobe the outline on/off.
       this.revealHoldMs += deltaMs;
       if (this.revealHoldMs > HOLD_MS) {
         this.revealAlpha = Math.max(0, this.revealAlpha - deltaMs / 400);
       }
+      targetFill = this.revealAlpha;
+      targetOutline = 0;
     }
-    this.sprite.setAlpha(this.revealAlpha);
-    this.shineOverlay?.setAlpha(this.revealAlpha * 0.45);
+    this.sprite.setAlpha(targetFill);
+    this.shineOverlay?.setAlpha(targetFill * 0.45);
+    this.outlineGfx?.setAlpha(targetOutline);
   }
 
   /** Returns true if the brick was destroyed by this hit. */
@@ -151,10 +256,19 @@ export class Brick {
     }
     if (this.archetype.kind === 'indestructible' || this.archetype.kind === 'bumper') {
       this.flash(scene);
+      // Metallic ping ring on indestructibles only — bumpers already
+      // get their own pinball-style burst from GameScene. Inlined to
+      // avoid pulling in EffectsSystem (which would force Phaser's
+      // device init and break the Node test path).
+      if (this.archetype.kind === 'indestructible') {
+        this.spawnMetalPing(scene);
+      }
       return { destroyed: false };
     }
     // REGEN: any meaningful hit resets the heal timer.
     if (this.archetype.kind === 'regen') this.regenAccumMs = 0;
+    // INVISIBLE: locked-on once a hit lands.
+    if (this.archetype.kind === 'invisible') this.revealedByHit = true;
     this.hp -= 1;
     this.flash(scene);
     if (this.hp <= 0) {
@@ -162,17 +276,30 @@ export class Brick {
       this.popAndDestroy(scene);
       return { destroyed: true };
     }
-    // Show damage cracks once HP is below max.
-    if (!this.cracksOverlay) {
-      this.cracksOverlay = scene.add
-        .image(this.sprite.x, this.sprite.y, 'brick-cracks')
-        .setDepth(12)
-        .setAlpha(0.55);
-    }
-    // Final-HP wobble + visual de-saturation cue.
-    if (this.hp === 1) {
-      this.sprite.setTint(desaturate(this.color, 0.45));
-      this.shineOverlay?.setAlpha(0.2);
+    this.applyCrackTier();
+    // "About to pop" — start a glow-orange pulse on the sprite tint at
+    // 1 HP for any multi-hit breakable brick. Replaces the previous
+    // flat desaturation cue (which made the brick look dimmer rather
+    // than more dangerous).
+    if (this.hp === 1 && this.archetype.hits >= 2 && !this.aboutToPopTween) {
+      this.aboutToPopTween = scene.tweens.addCounter({
+        from: 0,
+        to: 1,
+        duration: 360,
+        yoyo: true,
+        repeat: -1,
+        ease: 'sine.inOut',
+        onUpdate: (tw) => {
+          if (!this.alive || this.destroying) return;
+          const t = tw.getValue() ?? 0;
+          // Lerp brick.color → hot orange-red.
+          const hot = 0xff5522;
+          const r = Math.round(((this.color >> 16) & 0xff) + (((hot >> 16) & 0xff) - ((this.color >> 16) & 0xff)) * t);
+          const g = Math.round(((this.color >> 8) & 0xff) + (((hot >> 8) & 0xff) - ((this.color >> 8) & 0xff)) * t);
+          const b = Math.round((this.color & 0xff) + ((hot & 0xff) - (this.color & 0xff)) * t);
+          this.sprite.setTint((r << 16) | (g << 8) | b);
+        },
+      });
       scene.tweens.add({
         targets: this.sprite,
         scaleX: { from: 1.15, to: 1 },
@@ -184,15 +311,51 @@ export class Brick {
     return { destroyed: false };
   }
 
+  /**
+   * Pick the right crack texture for the current damage level and
+   * swap or hide the overlay. Damage = max HP − current HP. Tier 0
+   * means no overlay; tier ≥ 3 caps at the spiderweb.
+   */
+  private applyCrackTier(): void {
+    if (this.archetype.kind === 'indestructible' || this.archetype.kind === 'bumper') return;
+    const damage = this.archetype.hits - this.hp;
+    const desired = Math.max(0, Math.min(3, damage));
+    if (desired === this.crackTier) return;
+    if (desired === 0) {
+      this.cracksOverlay?.destroy();
+      this.cracksOverlay = undefined;
+      this.crackTier = 0;
+      return;
+    }
+    const scene = this.sprite.scene;
+    if (!scene) return;
+    const key = `brick-cracks-${desired}`;
+    const alpha = desired === 3 ? 0.85 : desired === 2 ? 0.7 : 0.55;
+    if (!this.cracksOverlay) {
+      this.cracksOverlay = scene.add.image(this.sprite.x, this.sprite.y, key).setDepth(12);
+    } else {
+      this.cracksOverlay.setTexture(key);
+    }
+    this.cracksOverlay.setAlpha(alpha);
+    this.crackTier = desired;
+  }
+
   destroy(): void {
     this.alive = false;
     this.destroying = true;
     const scene = this.sprite.scene;
     scene?.tweens.killTweensOf(this.sprite);
     if (this.shineOverlay) scene?.tweens.killTweensOf(this.shineOverlay);
+    if (this.metalGlow) scene?.tweens.killTweensOf(this.metalGlow);
+    if (this.iconOverlay) scene?.tweens.killTweensOf(this.iconOverlay);
+    this.aboutToPopTween?.stop();
+    this.aboutToPopTween = undefined;
     this.sprite.destroy();
     this.cracksOverlay?.destroy();
     this.shineOverlay?.destroy();
+    this.metalGlow?.destroy();
+    this.iconOverlay?.destroy();
+    this.outlineGfx?.destroy();
   }
 
   isBreakable(): boolean {
@@ -236,8 +399,10 @@ export class Brick {
 
     const targets: Phaser.GameObjects.GameObject[] = [this.sprite];
     if (this.shineOverlay) targets.push(this.shineOverlay);
+    if (this.iconOverlay) targets.push(this.iconOverlay);
     this.sprite.setScale(0);
     this.shineOverlay?.setScale(0);
+    this.iconOverlay?.setScale(0);
     // Stagger by 8 ms so the LAST brick in a max-density 14×13 field
     // (gridIndex ≈ 181) still finishes popping in under 1.7 s.
     scene.tweens.add({
@@ -299,12 +464,10 @@ export class Brick {
     }
     scene.time.delayedCall(Tuning.bricks.flashMs, () => {
       if (!this.alive || this.destroying) return;
-      // Restore tint — desaturated if down to last HP, else full color.
-      if (this.archetype.kind !== 'indestructible' && this.hp === 1) {
-        this.sprite.setTint(desaturate(this.color, 0.45));
-      } else {
-        this.sprite.setTint(this.color);
-      }
+      // Don't fight the about-to-pop pulse — its onUpdate owns the
+      // tint until the brick dies or heals out of 1 HP.
+      if (this.aboutToPopTween) return;
+      this.sprite.setTint(this.color);
     });
   }
 
@@ -312,6 +475,16 @@ export class Brick {
     this.destroying = true;
     scene.tweens.killTweensOf(this.sprite);
     if (this.shineOverlay) scene.tweens.killTweensOf(this.shineOverlay);
+    if (this.iconOverlay) scene.tweens.killTweensOf(this.iconOverlay);
+    if (this.metalGlow) scene.tweens.killTweensOf(this.metalGlow);
+    this.aboutToPopTween?.stop();
+    this.aboutToPopTween = undefined;
+    // Outline graphic and metal glow are no longer relevant once the
+    // brick is exploding — clear them immediately rather than tween.
+    this.outlineGfx?.destroy();
+    this.outlineGfx = undefined;
+    this.metalGlow?.destroy();
+    this.metalGlow = undefined;
     // Body is already inert (alive=false skips collision).
     scene.tweens.add({
       targets: this.sprite,
@@ -341,5 +514,65 @@ export class Brick {
         onComplete: () => this.shineOverlay?.destroy(),
       });
     }
+    // Icon overlay scatters with the brick — included in the
+    // destruction read so the chevron doesn't pop out instantly.
+    if (this.iconOverlay) {
+      scene.tweens.add({
+        targets: this.iconOverlay,
+        scale: 1.6,
+        alpha: 0,
+        y: this.iconOverlay.y + 12,
+        duration: 220,
+        ease: 'Quad.easeOut',
+        onComplete: () => this.iconOverlay?.destroy(),
+      });
+    }
+  }
+
+  /**
+   * Tiny green "+" floater for regen heal ticks. Inlined here rather
+   * than reusing EffectsSystem.floatingPoints because that module
+   * references Phaser at runtime, and importing it would break the
+   * Node test path (Brick.ts is transitively imported by LevelSystem
+   * which IS imported by tests).
+   */
+  private spawnHealFloater(scene: Phaser.Scene): void {
+    const t = scene.add
+      .text(this.x, this.y - 12, '+', {
+        fontFamily: 'Inter, system-ui, sans-serif',
+        fontSize: '14px',
+        color: '#88ff99',
+        fontStyle: '700',
+      })
+      .setOrigin(0.5)
+      .setDepth(70);
+    scene.tweens.add({
+      targets: t,
+      y: this.y - 36,
+      alpha: 0,
+      duration: 700,
+      ease: 'Quad.easeOut',
+      onComplete: () => t.destroy(),
+    });
+  }
+
+  /**
+   * Cyan-white expanding ring for indestructible-brick impacts.
+   * Mirrors EffectsSystem.shockwave but inlined for the same reason
+   * as spawnHealFloater above.
+   */
+  private spawnMetalPing(scene: Phaser.Scene): void {
+    const ring = scene.add.graphics().setDepth(60);
+    ring.lineStyle(2, 0xc8cdd4, 1);
+    ring.strokeCircle(0, 0, 1);
+    ring.setPosition(this.x, this.y);
+    scene.tweens.add({
+      targets: ring,
+      scale: 28,
+      alpha: 0,
+      duration: 240,
+      ease: 'Cubic.easeOut',
+      onComplete: () => ring.destroy(),
+    });
   }
 }

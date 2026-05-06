@@ -50,14 +50,101 @@ function generateBrickTextures(scene: Phaser.Scene): void {
     g.destroy();
   }
 
-  // damaged states (overlay cracks). We use additive overlay via a separate small texture.
-  const cg = scene.add.graphics({ x: 0, y: 0 });
-  cg.lineStyle(1.4, 0x000000, 0.55);
-  cg.lineBetween(6, 4, bw - 8, bh - 6);
-  cg.lineBetween(bw - 18, 4, 8, bh - 6);
-  cg.lineBetween(bw / 2, 2, bw / 2 - 6, bh - 2);
-  cg.generateTexture('brick-cracks', bw, bh);
-  cg.destroy();
+  // Damage crack overlays — three tiers, rendered onto a transparent
+  // canvas so the lines composite over the brick fill without re-tinting
+  // the body. Drawn dark with stark alpha for readability against any
+  // candy color.
+  generateCrackTextures(scene, bw, bh);
+
+  // Brushed-metal sheen for indestructibles. Same outer silhouette as
+  // brick-candy, but with diagonal highlight bars and a darker inner
+  // body — reads as "this thing is steel, you're not breaking it".
+  generateMetalBrickTexture(scene, bw, bh);
+
+  // Spawner idle icon — pulsing down-chevron drawn into a tiny canvas
+  // so the brick can attach a single Image overlay rather than running
+  // a per-frame Graphics redraw on every spawner.
+  generateSpawnerIconTexture(scene);
+}
+
+function generateCrackTextures(scene: Phaser.Scene, bw: number, bh: number): void {
+  // Tier 1 — single hair-thin diagonal in one corner.
+  const t1 = scene.add.graphics({ x: 0, y: 0 });
+  t1.lineStyle(1, 0x1a1020, 0.72);
+  t1.lineBetween(bw * 0.62, 3, bw - 4, bh * 0.55);
+  t1.lineStyle(0.6, 0x000000, 0.45);
+  t1.lineBetween(bw * 0.74, bh * 0.18, bw - 6, bh * 0.42);
+  t1.generateTexture('brick-cracks-1', bw, bh);
+  t1.destroy();
+
+  // Tier 2 — X-pattern across center.
+  const t2 = scene.add.graphics({ x: 0, y: 0 });
+  t2.lineStyle(1.2, 0x1a1020, 0.78);
+  t2.lineBetween(5, 3, bw - 5, bh - 3);
+  t2.lineBetween(bw - 5, 3, 5, bh - 3);
+  t2.lineStyle(0.8, 0x000000, 0.5);
+  t2.lineBetween(bw / 2, 2, bw * 0.32, bh - 2);
+  t2.lineBetween(bw / 2, 2, bw * 0.68, bh - 2);
+  t2.generateTexture('brick-cracks-2', bw, bh);
+  t2.destroy();
+
+  // Tier 3 — spiderweb fill. Center node + 6 radial spokes + chord
+  // fragments. Heavy enough to read as "about to pop".
+  const t3 = scene.add.graphics({ x: 0, y: 0 });
+  const cx = bw / 2;
+  const cy = bh / 2;
+  t3.lineStyle(1.2, 0x1a1020, 0.85);
+  const spokes = 7;
+  for (let i = 0; i < spokes; i++) {
+    const a = (i / spokes) * Math.PI * 2;
+    const r = bh * 0.7;
+    t3.lineBetween(cx, cy, cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+  }
+  t3.lineStyle(0.7, 0x000000, 0.5);
+  t3.lineBetween(2, bh * 0.4, bw - 2, bh * 0.65);
+  t3.lineBetween(bw * 0.18, 2, bw * 0.82, bh - 2);
+  t3.lineBetween(bw * 0.82, 2, bw * 0.18, bh - 2);
+  t3.generateTexture('brick-cracks-3', bw, bh);
+  t3.destroy();
+}
+
+function generateMetalBrickTexture(scene: Phaser.Scene, bw: number, bh: number): void {
+  const r = Math.min(6, Math.floor(bh / 3));
+  const g = scene.add.graphics({ x: 0, y: 0 });
+  // Base — slightly darker than candy bricks so it reads as steel under
+  // any tint. We still tint at runtime so level palettes can recolor.
+  g.fillStyle(0xffffff, 1);
+  g.fillRoundedRect(0, 0, bw, bh, r);
+  g.fillStyle(0x000000, 0.32);
+  g.fillRoundedRect(2, 2, bw - 4, bh - 4, Math.max(2, r - 2));
+  g.fillStyle(0xffffff, 1);
+  g.fillRoundedRect(2.5, 2.5, bw - 5, bh - 5, Math.max(2, r - 2));
+  // Body desaturator — mid-gray wash.
+  g.fillStyle(0x808890, 0.55);
+  g.fillRoundedRect(2.5, 2.5, bw - 5, bh - 5, Math.max(2, r - 2));
+  // Brushed-metal diagonal highlight bars — two thin parallel strokes.
+  g.lineStyle(1, 0xffffff, 0.55);
+  g.lineBetween(4, bh * 0.32, bw - 4, bh * 0.18);
+  g.lineStyle(1, 0xffffff, 0.32);
+  g.lineBetween(4, bh * 0.66, bw - 4, bh * 0.5);
+  // Bottom rim — darker than candy, hints at weight.
+  g.fillStyle(0x000000, 0.45);
+  g.fillRoundedRect(3, bh - 3, bw - 6, 2, 1);
+  g.generateTexture('brick-metal', bw, bh);
+  g.destroy();
+}
+
+function generateSpawnerIconTexture(scene: Phaser.Scene): void {
+  // Chevron / inverted V pointing down — reads as "something drops out
+  // of this brick when it's hit".
+  const w = 12;
+  const h = 8;
+  const g = scene.add.graphics({ x: 0, y: 0 });
+  g.lineStyle(1.6, 0xffffff, 1);
+  g.lineBetween(2, 2, w / 2, h - 2);
+  g.lineBetween(w - 2, 2, w / 2, h - 2);
+  g.generateTexture('brick-spawner-icon', w, h);
+  g.destroy();
 }
 
 function generatePaddleTextures(scene: Phaser.Scene): void {

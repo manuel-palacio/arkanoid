@@ -2,10 +2,29 @@ import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH } from '../config/gameConfig';
 import { Tuning } from '../config/tuning';
 import { CANDY, CANDY_ROTATION, lighten } from '../config/palette';
+import { prefersReducedMotion } from '../utils/reducedMotion';
 
 export interface Starfield {
   update(deltaMs: number): void;
   setSpeedMultiplier(m: number): void;
+  /**
+   * Combo / charged-rally progress in [0, 1]. Lerps the background blob
+   * tints from their cool grape/blueberry baseline toward hot
+   * cherry/white as the player chains hits. Reading this on the HUD is
+   * unambiguous; this gives a global "the room is heating up" feel.
+   */
+  setComboProgress(t: number): void;
+  /**
+   * Multi-ball turbulence shimmer. When on, the smallest dust layer
+   * gets a fast random alpha flicker — reads as "the playfield is
+   * about to come apart at the seams".
+   */
+  setTurbulence(on: boolean): void;
+  /**
+   * Briefly desaturate the blob tints after a life loss. `t` is the
+   * desat amount in [0, 1]; callers tween from 1 → 0 over ~600 ms.
+   */
+  setDesaturate(t: number): void;
   destroy(): void;
 }
 
@@ -45,52 +64,46 @@ export function drawStarfield(scene: Phaser.Scene, opts?: { density?: number }):
     .setDepth(-110);
 
   // 2) Soft glow blobs.
-  const blobs: Phaser.GameObjects.Image[] = [];
+  // Each blob owns a smoothly oscillating tint (grape ↔ blueberry, etc.),
+  // a "hot" target tint pushed in by combo progress, and a desaturation
+  // amount applied last (life-loss reaction). All three are composed
+  // every frame in update() rather than via tweens, so external
+  // modulators (combo, desat) don't fight the base oscillation.
+  type Blob = {
+    img: Phaser.GameObjects.Image;
+    tintA: number;
+    tintB: number;
+    hot: number;
+    period: number;
+    phase: number;
+    alphaA: number;
+    alphaB: number;
+  };
   const blobCfgs = [
-    { x: GAME_WIDTH * 0.22, y: GAME_HEIGHT * 0.28, scale: 5.4, tintA: CANDY.grape, tintB: CANDY.blueberry, alphaA: 0.06, alphaB: 0.1, period: 6200 },
-    { x: GAME_WIDTH * 0.78, y: GAME_HEIGHT * 0.55, scale: 4.2, tintA: CANDY.blueberry, tintB: CANDY.grape, alphaA: 0.07, alphaB: 0.11, period: 7400 },
-    { x: GAME_WIDTH * 0.4, y: GAME_HEIGHT * 0.82, scale: 3.6, tintA: CANDY.cherry, tintB: CANDY.grape, alphaA: 0.05, alphaB: 0.09, period: 5600 },
+    { x: GAME_WIDTH * 0.22, y: GAME_HEIGHT * 0.28, scale: 5.4, tintA: CANDY.grape, tintB: CANDY.blueberry, hot: CANDY.cherry, alphaA: 0.06, alphaB: 0.1, period: 6200 },
+    { x: GAME_WIDTH * 0.78, y: GAME_HEIGHT * 0.55, scale: 4.2, tintA: CANDY.blueberry, tintB: CANDY.grape, hot: CANDY.tangerine, alphaA: 0.07, alphaB: 0.11, period: 7400 },
+    { x: GAME_WIDTH * 0.4, y: GAME_HEIGHT * 0.82, scale: 3.6, tintA: CANDY.cherry, tintB: CANDY.grape, hot: CANDY.white, alphaA: 0.05, alphaB: 0.09, period: 5600 },
   ];
-  for (const c of blobCfgs) {
-    const b = scene.add
+  const blobs: Blob[] = blobCfgs.map((c, i) => {
+    const img = scene.add
       .image(c.x, c.y, 'glow-soft')
       .setBlendMode(Phaser.BlendModes.ADD)
       .setScale(c.scale)
       .setTint(c.tintA)
       .setAlpha(c.alphaA)
       .setDepth(-105);
-    blobs.push(b);
-    scene.tweens.add({
-      targets: b,
-      alpha: c.alphaB,
-      duration: c.period,
-      yoyo: true,
-      repeat: -1,
-      ease: 'sine.inOut',
-    });
-    // Color tween via a counter that lerps between the two tints.
-    const fromR = (c.tintA >> 16) & 0xff;
-    const fromG = (c.tintA >> 8) & 0xff;
-    const fromB = c.tintA & 0xff;
-    const toR = (c.tintB >> 16) & 0xff;
-    const toG = (c.tintB >> 8) & 0xff;
-    const toB = c.tintB & 0xff;
-    scene.tweens.addCounter({
-      from: 0,
-      to: 1,
-      duration: c.period * 1.3,
-      yoyo: true,
-      repeat: -1,
-      ease: 'sine.inOut',
-      onUpdate: (tw) => {
-        const t = tw.getValue() ?? 0;
-        const r = Math.round(fromR + (toR - fromR) * t);
-        const g = Math.round(fromG + (toG - fromG) * t);
-        const bl = Math.round(fromB + (toB - fromB) * t);
-        b.setTint((r << 16) | (g << 8) | bl);
-      },
-    });
-  }
+    return {
+      img,
+      tintA: c.tintA,
+      tintB: c.tintB,
+      hot: c.hot,
+      period: c.period,
+      // Stagger phases so the three blobs don't pulse in lockstep.
+      phase: (i / blobCfgs.length) * c.period,
+      alphaA: c.alphaA,
+      alphaB: c.alphaB,
+    };
+  });
 
   // 3) Candy-dust layers — small CANDY-colored dots drifting up-left.
   type Dust = { x: number; y: number; size: number; color: number; alpha: number };
@@ -121,8 +134,61 @@ export function drawStarfield(scene: Phaser.Scene, opts?: { density?: number }):
   }
 
   let speedMul = 1;
+  let combo = 0;
+  let desat = 0;
+  let turbulence = false;
+  let turbulenceFlicker = 1;
+  let elapsedMs = 0;
+  const reduced = prefersReducedMotion();
+
+  function lerpChannel(a: number, b: number, t: number): number {
+    return Math.round(a + (b - a) * t);
+  }
+
+  function lerpColor(a: number, b: number, t: number): number {
+    const ar = (a >> 16) & 0xff;
+    const ag = (a >> 8) & 0xff;
+    const ab = a & 0xff;
+    const br = (b >> 16) & 0xff;
+    const bg = (b >> 8) & 0xff;
+    const bb = b & 0xff;
+    return (lerpChannel(ar, br, t) << 16) | (lerpChannel(ag, bg, t) << 8) | lerpChannel(ab, bb, t);
+  }
 
   function update(deltaMs: number): void {
+    elapsedMs += deltaMs;
+
+    // Blobs — base oscillation between tintA/tintB, combo pushes toward
+    // hot target, desat finally washes everything toward gray.
+    for (const b of blobs) {
+      const t = 0.5 - 0.5 * Math.cos((2 * Math.PI * (elapsedMs + b.phase)) / b.period);
+      let color = lerpColor(b.tintA, b.tintB, t);
+      if (combo > 0) color = lerpColor(color, b.hot, Math.min(1, combo));
+      if (desat > 0) {
+        const ar = (color >> 16) & 0xff;
+        const ag = (color >> 8) & 0xff;
+        const ab = color & 0xff;
+        const gray = Math.round(0.299 * ar + 0.587 * ag + 0.114 * ab);
+        color = (lerpChannel(ar, gray, desat) << 16)
+          | (lerpChannel(ag, gray, desat) << 8)
+          | lerpChannel(ab, gray, desat);
+      }
+      b.img.setTint(color);
+      // Alpha breathes with the same phase + a small lift on combo so a
+      // hot streak feels brighter, not just hotter-colored.
+      const baseA = b.alphaA + (b.alphaB - b.alphaA) * t;
+      b.img.setAlpha(baseA * (1 + combo * 0.6));
+    }
+
+    // Dust layers.
+    if (turbulence && !reduced) {
+      // Fast random flicker target. Random walk so it doesn't strobe.
+      turbulenceFlicker += (Math.random() - 0.5) * 0.6;
+      turbulenceFlicker = Math.max(0.55, Math.min(1.0, turbulenceFlicker));
+    } else {
+      turbulenceFlicker += (1 - turbulenceFlicker) * 0.1;
+    }
+
     layerObjs.forEach((g, idx) => {
       g.clear();
       const conf = layers[idx];
@@ -130,6 +196,8 @@ export function drawStarfield(scene: Phaser.Scene, opts?: { density?: number }):
       const dots = layerDots[idx] ?? [];
       const dt = deltaMs / 1000;
       // Drift diagonally up-left at conf.speed px/sec.
+      // Smallest layer (depth -101, idx=0) gets the turbulence multiplier.
+      const layerAlphaMul = idx === 0 ? turbulenceFlicker * 0.8 + 0.2 : 1;
       for (const d of dots) {
         d.x -= conf.speed * 0.7 * speedMul * dt;
         d.y -= conf.speed * 0.7 * speedMul * dt;
@@ -141,7 +209,7 @@ export function drawStarfield(scene: Phaser.Scene, opts?: { density?: number }):
           d.y = GAME_HEIGHT + 4;
           d.x = Math.random() * GAME_WIDTH;
         }
-        g.fillStyle(d.color, d.alpha);
+        g.fillStyle(d.color, d.alpha * layerAlphaMul);
         g.fillCircle(d.x, d.y, d.size);
       }
     });
@@ -150,8 +218,8 @@ export function drawStarfield(scene: Phaser.Scene, opts?: { density?: number }):
   function destroy(): void {
     layerObjs.forEach((o) => o.destroy());
     blobs.forEach((b) => {
-      scene.tweens.killTweensOf(b);
-      b.destroy();
+      scene.tweens.killTweensOf(b.img);
+      b.img.destroy();
     });
     bg.destroy();
   }
@@ -160,7 +228,23 @@ export function drawStarfield(scene: Phaser.Scene, opts?: { density?: number }):
     speedMul = Math.max(0, m);
   }
 
-  return { update, destroy, setSpeedMultiplier };
+  function setComboProgress(t: number): void {
+    if (reduced) {
+      combo = 0;
+      return;
+    }
+    combo = Math.max(0, Math.min(1, t));
+  }
+
+  function setTurbulence(on: boolean): void {
+    turbulence = on;
+  }
+
+  function setDesaturate(t: number): void {
+    desat = Math.max(0, Math.min(1, t));
+  }
+
+  return { update, destroy, setSpeedMultiplier, setComboProgress, setTurbulence, setDesaturate };
 }
 
 /**
